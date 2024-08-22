@@ -1,0 +1,39 @@
+<html>
+    <head>
+        <script src="scripts/obj/obj-file-parser.js"></script>
+        <script src="scripts/obj/parse-obj.js"></script>
+
+        <script src="scripts/scene/builders/kernels/rearrange.js"  ></script>
+        <script src="scripts/scene/builders/kernels/radix-tree.js" ></script>
+        <script src="scripts/scene/builders/kernels/radix-sort.js" ></script>
+        <script src="scripts/scene/builders/kernels/bvh-up-pass.js"></script>
+        <script src="scripts/scene/builders/kernels/pack-t-mesh.js"></script>
+        <script src="scripts/scene/builders/kernels/aabb-z-idx.js" ></script>
+
+        <script src="scripts/scene/builders/builders.js"></script>
+
+        <script src="scripts/scene/scene.js"></script>
+
+        <script src="scripts/main.js"></script>
+        <style>
+            body {
+                margin: 0px;
+                width: 100%;
+                height: 100%;
+            }
+            canvas {
+                width: 512px;
+                height: 512px;
+            }
+            .no-select {
+                -webkit-user-select: none; /* Safari */        
+                -moz-user-select: none; /* Firefox */
+                -ms-user-select: none; /* IE10+/Edge */
+                user-select: none; /* Standard */
+            }
+        </style>
+    </head>
+    <body>
+        <canvas id="canvas"></canvas>
+    </body>
+</html>
