@@ -15,10 +15,12 @@ function initBuilders(device) {
         for (var x in utilizedMeshes) {
             bvhs.push(meshes[x].bvh)
         }
-
         const res = await packTMeshKernel.execute(bvhs)
-
-        console.log(res)
+        return {
+            bvhBuffer: res.PACKED_BVH_BUFFER,
+            triBuffer: res.PACKED_TRI_BUFFER,
+            offsets  : res.OFFSETS
+        }
     }
 
     async function buildMeshBVH(mesh) {
@@ -84,7 +86,6 @@ function initBuilders(device) {
         }
     }
 }
-
 
 // old code
 function initBVHBuild(device) {

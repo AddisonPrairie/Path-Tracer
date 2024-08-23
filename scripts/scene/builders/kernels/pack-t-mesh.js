@@ -178,7 +178,7 @@ function initPackTMeshKernel(device) {
             await device.queue.onSubmittedWorkDone()
         }
 
-        return { PACKED_BVH_BUFFER, PACKED_TRI_BUFFER }
+        return { PACKED_BVH_BUFFER, PACKED_TRI_BUFFER, OFFSETS: offsets }
     }
 
     function SRC() {

@@ -2,11 +2,14 @@
 
 function initScene(device) {
 
-
     const builders = initBuilders(device)
 
+    // externally editable state
     let meshes  = []
     let objects = []
+
+    // internal state
+    let packedMeshes = null
 
     return { registerMesh, instanceMesh, build, getTraceKernels }
 
@@ -26,7 +29,7 @@ function initScene(device) {
             runningTriOffset += meshes[x].bvh.numTriangles
         }
 
-        const packedMeshes = await builders.packMeshes(meshes, utilizedMeshOrder)
+        packedMeshes = await builders.packMeshes(meshes, utilizedMeshOrder)
     }
 
     function getTraceKernels() {
@@ -50,3 +53,4 @@ function initScene(device) {
         objects.push({ type: "sphere", position, radius })
     }
 }
+

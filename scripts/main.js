@@ -23,5 +23,21 @@ window.onload = async () => {
 
     await scene.build()
 
-    console.log(scene)
+
+}
+
+
+async function readBackBuffer(device, buffer) {
+    const readBuffer = device.createBuffer({
+        size: buffer.size,
+        usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST
+    })
+    const CE = device.createCommandEncoder()
+    CE.copyBufferToBuffer(buffer, 0, readBuffer, 0, buffer.size)
+    device.queue.submit([CE.finish()])
+    await readBuffer.mapAsync(GPUMapMode.READ)
+    const ret = new ArrayBuffer(buffer.size)
+    new Int32Array(ret).set(new Int32Array(readBuffer.getMappedRange()))
+    readBuffer.destroy()
+    return ret
 }
