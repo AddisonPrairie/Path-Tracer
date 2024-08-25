@@ -9,7 +9,7 @@ function initBuilders(device) {
     const rearrangeKernel = initRearrangeKernel(device)
     const packTMeshKernel = initPackTMeshKernel(device)
 
-    return { buildMeshBVH, packMeshes, buildTLAS }
+    return { buildMeshBVH, packMeshes, buildTLAS, packObjects }
 
     async function packMeshes(meshes, utilizedMeshes) {
         let bvhs = []
@@ -21,6 +21,74 @@ function initBuilders(device) {
             bvhBuffer: res.PACKED_BVH_BUFFER,
             triBuffer: res.PACKED_TRI_BUFFER,
             offsets  : res.OFFSETS
+        }
+    }
+
+    async function packObjects(objects, rearrangeBuffer, utilizedMeshOrder) {
+        let rearrangeOrder = new Int32Array(await readBackBuffer(device, rearrangeBuffer))
+
+        let objectsBuf = new ArrayBuffer(objects.length * 128)
+        {
+            let DV = new DataView(objectsBuf)
+            for (var i = 0; i < objects.length; i++) {
+                // local -> world matrix
+                DV.setFloat32(128 * i + 0 , objects[rearrangeOrder[i]].transformMatrices.localToWorld[ 0], true)
+                DV.setFloat32(128 * i + 4 , objects[rearrangeOrder[i]].transformMatrices.localToWorld[ 4], true)
+                DV.setFloat32(128 * i + 8 , objects[rearrangeOrder[i]].transformMatrices.localToWorld[ 8], true)
+                DV.setFloat32(128 * i + 12, objects[rearrangeOrder[i]].transformMatrices.localToWorld[12], true)
+                DV.setFloat32(128 * i + 16, objects[rearrangeOrder[i]].transformMatrices.localToWorld[ 1], true)
+                DV.setFloat32(128 * i + 20, objects[rearrangeOrder[i]].transformMatrices.localToWorld[ 5], true)
+                DV.setFloat32(128 * i + 24, objects[rearrangeOrder[i]].transformMatrices.localToWorld[ 9], true)
+                DV.setFloat32(128 * i + 28, objects[rearrangeOrder[i]].transformMatrices.localToWorld[13], true)
+                DV.setFloat32(128 * i + 32, objects[rearrangeOrder[i]].transformMatrices.localToWorld[ 2], true)
+                DV.setFloat32(128 * i + 36, objects[rearrangeOrder[i]].transformMatrices.localToWorld[ 6], true)
+                DV.setFloat32(128 * i + 40, objects[rearrangeOrder[i]].transformMatrices.localToWorld[10], true)
+                DV.setFloat32(128 * i + 44, objects[rearrangeOrder[i]].transformMatrices.localToWorld[14], true)
+
+                // world -> local matrix
+                DV.setFloat32(128 * i +  64, objects[rearrangeOrder[i]].transformMatrices.worldToLocal[ 0], true)
+                DV.setFloat32(128 * i +  68, objects[rearrangeOrder[i]].transformMatrices.worldToLocal[ 4], true)
+                DV.setFloat32(128 * i +  72, objects[rearrangeOrder[i]].transformMatrices.worldToLocal[ 8], true)
+                DV.setFloat32(128 * i +  76, objects[rearrangeOrder[i]].transformMatrices.worldToLocal[12], true)
+                DV.setFloat32(128 * i +  80, objects[rearrangeOrder[i]].transformMatrices.worldToLocal[ 1], true)
+                DV.setFloat32(128 * i +  84, objects[rearrangeOrder[i]].transformMatrices.worldToLocal[ 5], true)
+                DV.setFloat32(128 * i +  88, objects[rearrangeOrder[i]].transformMatrices.worldToLocal[ 9], true)
+                DV.setFloat32(128 * i +  92, objects[rearrangeOrder[i]].transformMatrices.worldToLocal[13], true)
+                DV.setFloat32(128 * i +  96, objects[rearrangeOrder[i]].transformMatrices.worldToLocal[ 2], true)
+                DV.setFloat32(128 * i + 100, objects[rearrangeOrder[i]].transformMatrices.worldToLocal[ 6], true)
+                DV.setFloat32(128 * i + 104, objects[rearrangeOrder[i]].transformMatrices.worldToLocal[10], true)
+                DV.setFloat32(128 * i + 108, objects[rearrangeOrder[i]].transformMatrices.worldToLocal[14], true)
+
+                // additional info
+                DV.setInt32  (128 * i +  48, utilizedMeshOrder[objects[rearrangeOrder[i]].meshID].triangleOffset, true)
+            }
+        }
+        
+        const BUFFER = device.createBuffer({
+            size: objects.length * 128,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+            mappedAtCreation: true
+        })
+
+        new Float32Array(BUFFER.getMappedRange()).set(objectsBuf)
+        BUFFER.unmap()
+
+        return BUFFER
+
+        // util function to read back rearrange buffer
+        async function readBackBuffer(device, buffer) {
+            const readBuffer = device.createBuffer({
+                size: buffer.size,
+                usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST
+            })
+            const CE = device.createCommandEncoder()
+            CE.copyBufferToBuffer(buffer, 0, readBuffer, 0, buffer.size)
+            device.queue.submit([CE.finish()])
+            await readBuffer.mapAsync(GPUMapMode.READ)
+            const ret = new ArrayBuffer(buffer.size)
+            new Int32Array(ret).set(new Int32Array(readBuffer.getMappedRange()))
+            readBuffer.destroy()
+            return ret
         }
     }
 
