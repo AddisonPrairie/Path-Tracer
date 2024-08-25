@@ -1,4 +1,3 @@
-//import { OBJFile } from "./obj-file-parser.js"
 
 function parseObj(file) {
     const objFile = new OBJFile(file)
@@ -61,21 +60,6 @@ function parseObj(file) {
             numTris++
         }
     }
-
-    // add a floor to the model
-    /*numTris += 2
-
-    let floorHeight = z_min + .01
-    let floorSize = 10000.
-
-    trisArr.push(
-        -floorSize, -floorSize, floorHeight, 3.1415,
-         floorSize, -floorSize, floorHeight, 3.1415,
-        -floorSize,  floorSize, floorHeight, 3.1415,
-         floorSize, -floorSize, floorHeight, 3.1415,
-         floorSize,  floorSize, floorHeight, 3.1415,
-        -floorSize,  floorSize, floorHeight, 3.1415,
-    )*/
 
     return { 
         numTriangles: numTris, 
