@@ -22,4 +22,10 @@ window.onload = async () => {
     scene.instanceMesh(2, [0, 0, 0], [0, 0, 0], [1, 1, 1])
 
     await scene.build()
+
+    const trace = scene.getTraceKernels()
+
+    const debug = initDebug(device, document.querySelector("#canvas"), trace)
+
+    debug.draw()
 }

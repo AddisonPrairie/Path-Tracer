@@ -80,174 +80,246 @@ function initScene(device) {
             return
         }
 
-        const SRC = /* wgsl */ `
-
-        struct BVHNode {
-            aabb_l_min : vec3f,
-               l_child :   i32,
-            aabb_l_max : vec3f,
-                   f_1 :   i32,
-            aabb_r_min : vec3f,
-               r_child :   i32,
-            aabb_r_max : vec3f,
-                   f_2 :   i32
-        };
-
-        // additional information is stored in the bottom row of the matrices
-        struct Object {
-            localToWorld : mat4x4f,
-            worldToLocal : mat4x4f
-        };
-
-        struct Triangle {
-            v0 : vec3f,
-            v1 : vec3f,
-            v2 : vec3f
-        };
-
-        @group(0) @binding(0) var<storage, read_write>    tlas_bvh : array<BVHNode>;
-        @group(0) @binding(1) var<storage, read_write>     objects : array<Object>;
-        @group(0) @binding(2) var<storage, read_write>    mesh_bvh : array<BVHNode>;
-        @group(0) @binding(3) var<storage, read_write>   mesh_tris : array<Triangle>;
-        
-        struct RayHit {
-            dist :   f32,
-            norm : vec3f,
-        };
-
-        var<private> stack : array<i32, 32>;
-
-        fn intersect_bvh(o_in : vec3f, d_in : vec3f) -> RayHit {
-            var o : vec3f = o_in;
-            var d : vec3f = d_in;
-
-            var hit_dist : f32 = 1e30f;
-            var hit_obj  : i32 = -1;
-            
-            var stack_ptr : i32 =  0;
-            var  node_idx : i32 =  0;
-            var   obj_idx : i32 = -1;
-            var switch_pt : i32 = -1;
-
-            while (stack_ptr >= 0) {
-                if (stack_ptr < switch_pt) {
-                    // if this is the case, we just left the object
-                    switch_pt = -1;
-                    obj_idx   = -1;
+        const BG_LAYOUT = device.createBindGroupLayout({
+            entries: [
+                {
+                    binding: 0,
+                    visibility: GPUShaderStage.COMPUTE,
+                    buffer: {
+                        type: "storage"
+                    }
+                },
+                {
+                    binding: 1,
+                    visibility: GPUShaderStage.COMPUTE,
+                    buffer: {
+                        type: "storage"
+                    }
+                },
+                {
+                    binding: 2,
+                    visibility: GPUShaderStage.COMPUTE,
+                    buffer: {
+                        type: "storage"
+                    }
+                },
+                {
+                    binding: 3,
+                    visibility: GPUShaderStage.COMPUTE,
+                    buffer: {
+                        type: "storage"
+                    }
                 }
-                if (node_idx < 0) {
-                    if (obj_idx < 0) {
-                        // this is an object
-                        obj_idx = -(node_idx + 1);
-                        var obj : Object = objects[obj_idx];
-                        node_idx = get_object_bvh_offset(obj);
-                    } else {
-                        // this is a triangle
-                        var   tr : Triangle = mesh_tris[-(node_idx + 1)];
-                        var dist :      f32 = tri_intersect(o, d, tr);
-                        if (dist > 0.f && dist < hit_dist) {
-                            hit_dist = dist;
-                        }
-                        stack_ptr -= 1;
-                        node_idx = stack[stack_ptr];
+            ]
+        })
+
+        const BG = device.createBindGroup({
+            layout: BG_LAYOUT,
+            entries: [
+                {
+                    binding: 0,
+                    visibility: GPUShaderStage.COMPUTE,
+                    resource: {
+                        buffer: sceneGPUState.tlasBVHBuffer
                     }
-                } else {
-                    // otherwise, this is an internal BVH node
-                    var node : BVHNode;
-
-                    if (obj_idx < 0) {
-                        node = tlas_bvh[node_idx];
-                    } else {
-                        node = mesh_bvh[node_idx];
+                },
+                {
+                    binding: 1,
+                    visibility: GPUShaderStage.COMPUTE,
+                    resource: {
+                        buffer: sceneGPUState.objectsBuffer
                     }
+                },
+                {
+                    binding: 2,
+                    visibility: GPUShaderStage.COMPUTE,
+                    resource: {
+                        buffer: sceneGPUState.meshBVHBuffer
+                    }
+                },
+                {
+                    binding: 3,
+                    visibility: GPUShaderStage.COMPUTE,
+                    resource: {
+                        buffer: sceneGPUState.meshTriBuffer
+                    }
+                }
+            ]
+        })
 
-                    var l_dist : f32 = aabb_intersect(
-                        node.aabb_l_min, 
-                        node.aabb_l_max,
-                        o, d
-                    );
-                    var r_dist : f32 = aabb_intersect(
-                        node.aabb_r_min,
-                        node.aabb_r_max,
-                        o, d
-                    );
-                    var l_valid : bool = l_dist != -1e30f && l_dist < hit_dist;
-                    var r_valid : bool = r_dist != -1e30f && r_dist < hit_dist;
-                    if (l_valid && r_valid) {
-                        var f_idx : i32;
-                        var c_idx : i32;
+        return {
+            bindGroup: BG,
+            bindGroupLayout: BG_LAYOUT,
+            closestHitCode: SRC()
+        }
 
-                        if (l_dist < r_dist) {
-                            c_idx = node.l_child;
-                            f_idx = node.r_child;
+        function SRC() {
+            return /* wgsl */ `
+
+            struct BVHNode {
+                aabb_l_min : vec3f,
+                l_child :   i32,
+                aabb_l_max : vec3f,
+                    f_1 :   i32,
+                aabb_r_min : vec3f,
+                r_child :   i32,
+                aabb_r_max : vec3f,
+                    f_2 :   i32
+            };
+
+            // additional information is stored in the bottom row of the matrices
+            struct Object {
+                localToWorld : mat4x4f,
+                worldToLocal : mat4x4f
+            };
+
+            struct Triangle {
+                v0 : vec3f,
+                v1 : vec3f,
+                v2 : vec3f
+            };
+
+            @group(4) @binding(0) var<storage, read_write>    tlas_bvh : array<BVHNode>;
+            @group(4) @binding(1) var<storage, read_write>     objects : array<Object>;
+            @group(4) @binding(2) var<storage, read_write>    mesh_bvh : array<BVHNode>;
+            @group(4) @binding(3) var<storage, read_write>   mesh_tris : array<Triangle>;
+
+            var<private> stack : array<i32, 32>;
+
+            fn intersect_bvh(o_in : vec3f, d_in : vec3f) -> f32 {
+                var o : vec3f = o_in;
+                var d : vec3f = d_in;
+
+                var hit_dist : f32 = 1e30f;
+                var hit_obj  : i32 = -1;
+                
+                var stack_ptr : i32 =  0;
+                var  node_idx : i32 =  0;
+                var   obj_idx : i32 = -1;
+                var switch_pt : i32 = -1;
+
+                while (stack_ptr >= 0) {
+                    if (stack_ptr < switch_pt) {
+                        // if this is the case, we just left the object
+                        switch_pt = -1;
+                        obj_idx   = -1;
+                    }
+                    if (node_idx < 0) {
+                        if (obj_idx < 0) {
+                            // this is an object
+                            obj_idx = -(node_idx + 1);
+                            var obj : Object = objects[obj_idx];
+                            node_idx = get_object_bvh_offset(obj);
                         } else {
-                            c_idx = node.r_child;
-                            f_idx = node.l_child;
+                            // this is a triangle
+                            var   tr : Triangle = mesh_tris[-(node_idx + 1)];
+                            var dist :      f32 = tri_intersect(o, d, tr);
+                            if (dist > 0.f && dist < hit_dist) {
+                                hit_dist = dist;
+                            }
+                            stack_ptr -= 1;
+                            node_idx = stack[stack_ptr];
+                        }
+                    } else {
+                        // otherwise, this is an internal BVH node
+                        var node : BVHNode;
+
+                        if (obj_idx < 0) {
+                            node = tlas_bvh[node_idx];
+                        } else {
+                            node = mesh_bvh[node_idx];
                         }
 
-                        stack[stack_ptr] = f_idx;
-                        stack_ptr += 1;
-                        node_idx = c_idx;
-                    } else
-                    if (l_valid) {
-                        node_idx = node.l_child;
-                    } else 
-                    if (r_valid) {
-                        node_idx = node.r_child;
-                    } else {
-                        stack_ptr -= 1;
-                        node_idx = stack[stack_ptr];
+                        var l_dist : f32 = aabb_intersect(
+                            node.aabb_l_min, 
+                            node.aabb_l_max,
+                            o, d
+                        );
+                        var r_dist : f32 = aabb_intersect(
+                            node.aabb_r_min,
+                            node.aabb_r_max,
+                            o, d
+                        );
+                        var l_valid : bool = l_dist != -1e30f && l_dist < hit_dist;
+                        var r_valid : bool = r_dist != -1e30f && r_dist < hit_dist;
+                        if (l_valid && r_valid) {
+                            var f_idx : i32;
+                            var c_idx : i32;
+
+                            if (l_dist < r_dist) {
+                                c_idx = node.l_child;
+                                f_idx = node.r_child;
+                            } else {
+                                c_idx = node.r_child;
+                                f_idx = node.l_child;
+                            }
+
+                            stack[stack_ptr] = f_idx;
+                            stack_ptr += 1;
+                            node_idx = c_idx;
+                        } else
+                        if (l_valid) {
+                            node_idx = node.l_child;
+                        } else 
+                        if (r_valid) {
+                            node_idx = node.r_child;
+                        } else {
+                            stack_ptr -= 1;
+                            node_idx = stack[stack_ptr];
+                        }
                     }
                 }
+
+                return hit_dist;
             }
+
+            fn get_object_bvh_offset(obj : Object) -> i32 {
+                return std::bitcast<i32>(obj.localToWorld.a);
+            }
+
+            // from: https://www.scratchapixel.com/lessons/3d-basic-rendering/ray-tracing-rendering-a-triangle/moller-trumbore-ray-triangle-intersection.html
+            fn tri_intersect(o : vec3f, d : vec3f, tri : Triangle) -> vec4f {
+                var v0v1 : vec3f = tri.v1 - tri.v0;
+                var v0v2 : vec3f = tri.v2 - tri.v0;
+                var pvec : vec3f = cross(d, v0v2);
+
+                var  det : f32 = dot(v0v1, pvec);
+
+                if (abs(det) < 1e-10) {
+                    return vec4f(-1.f);
+                }
+
+                var i_det : f32   = 1.f / det;
+                var  tvec : vec3f = o - tri.v0;
+
+                var u : f32 = dot(tvec, pvec) * i_det;
+                
+                if (u < 0.f || u > 1.f) {
+                    return vec4f(-1.f);
+                }
+
+                var qvec : vec3f = cross(tvec, v0v1);
+
+                var v : f32 = dot(d, qvec) * i_det;
+                if (v < 0.f || u + v > 1.f) {
+                    return vec4f(-1.f);
+                }
+
+                return vec4f(
+                    normalize(cross(v0v1, v0v2)),
+                    dot(v0v2, qvec) * i_det
+                );
+            }
+
+            fn aabb_intersect(low : vec3f, high : vec3f, o : vec3f, d : vec3f) -> f32 {
+                var iDir = 1. / d;
+                var f = (high - o) * iDir; var n = (low - o) * iDir;
+                var tmax = max(f, n); var tmin = min(f, n);
+                var t0 = max(tmin.x, max(tmin.y, tmin.z));
+                var t1 = min(tmax.x, min(tmax.y, tmax.z));
+                return select(-1e30, select(t0, -1e30, t1 < 0.), t1 >= t0);
+            }`
         }
-
-        fn get_object_bvh_offset(obj : Object) -> i32 {
-            return std::bitcast<i32>(obj.localToWorld.a);
-        }
-
-        // from: https://www.scratchapixel.com/lessons/3d-basic-rendering/ray-tracing-rendering-a-triangle/moller-trumbore-ray-triangle-intersection.html
-        fn tri_intersect(o : vec3f, d : vec3f, tri : Triangle) -> vec4f {
-            var v0v1 : vec3f = tri.v1 - tri.v0;
-            var v0v2 : vec3f = tri.v2 - tri.v0;
-            var pvec : vec3f = cross(d, v0v2);
-
-            var  det : f32 = dot(v0v1, pvec);
-
-            if (abs(det) < 1e-10) {
-                return vec4f(-1.f);
-            }
-
-            var i_det : f32   = 1.f / det;
-            var  tvec : vec3f = o - tri.v0;
-
-            var u : f32 = dot(tvec, pvec) * i_det;
-            
-            if (u < 0.f || u > 1.f) {
-                return vec4f(-1.f);
-            }
-
-            var qvec : vec3f = cross(tvec, v0v1);
-
-            var v : f32 = dot(d, qvec) * i_det;
-            if (v < 0.f || u + v > 1.f) {
-                return vec4f(-1.f);
-            }
-
-            return vec4f(
-                normalize(cross(v0v1, v0v2)),
-                dot(v0v2, qvec) * i_det
-            );
-        }
-
-        fn aabb_intersect(low : vec3f, high : vec3f, o : vec3f, d : vec3f) -> f32 {
-            var iDir = 1. / d;
-            var f = (high - o) * iDir; var n = (low - o) * iDir;
-            var tmax = max(f, n); var tmin = min(f, n);
-            var t0 = max(tmin.x, max(tmin.y, tmin.z));
-            var t1 = min(tmax.x, min(tmax.y, tmax.z));
-            return select(-1e30, select(t0, -1e30, t1 < 0.), t1 >= t0);
-        }`
     }
 
     function registerMesh(mesh) {
