@@ -66,11 +66,11 @@ function initBuilders(device) {
         
         const BUFFER = device.createBuffer({
             size: objects.length * 128,
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
             mappedAtCreation: true
         })
 
-        new Float32Array(BUFFER.getMappedRange()).set(objectsBuf)
+        new Int32Array(BUFFER.getMappedRange()).set(new Int32Array(objectsBuf))
         BUFFER.unmap()
 
         return BUFFER
@@ -210,4 +210,20 @@ function initBuilders(device) {
             bounds: triangles.bounds
         }
     }
+}
+
+// util function to read back rearrange buffer
+async function readBackBuffer(device, buffer) {
+    const readBuffer = device.createBuffer({
+        size: buffer.size,
+        usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST
+    })
+    const CE = device.createCommandEncoder()
+    CE.copyBufferToBuffer(buffer, 0, readBuffer, 0, buffer.size)
+    device.queue.submit([CE.finish()])
+    await readBuffer.mapAsync(GPUMapMode.READ)
+    const ret = new ArrayBuffer(buffer.size)
+    new Int32Array(ret).set(new Int32Array(readBuffer.getMappedRange()))
+    readBuffer.destroy()
+    return ret
 }

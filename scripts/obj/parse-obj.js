@@ -20,8 +20,8 @@ function parseObj(file) {
         let vr = face.vertices[0]
 
         let vr_x = output.models[0].vertices[vr.vertexIndex - 1].x
-        let vr_z = output.models[0].vertices[vr.vertexIndex - 1].y
-        let vr_y = output.models[0].vertices[vr.vertexIndex - 1].z
+        let vr_y = output.models[0].vertices[vr.vertexIndex - 1].y
+        let vr_z = output.models[0].vertices[vr.vertexIndex - 1].z
 
         x_min = Math.min(x_min, vr_x)
         y_min = Math.min(y_min, vr_y)
@@ -36,12 +36,12 @@ function parseObj(file) {
             let v2 = face.vertices[y + 1]
 
             let v1_x = output.models[0].vertices[v1.vertexIndex - 1].x
-            let v1_z = output.models[0].vertices[v1.vertexIndex - 1].y
-            let v1_y = output.models[0].vertices[v1.vertexIndex - 1].z
+            let v1_y = output.models[0].vertices[v1.vertexIndex - 1].y
+            let v1_z = output.models[0].vertices[v1.vertexIndex - 1].z
 
             let v2_x = output.models[0].vertices[v2.vertexIndex - 1].x
-            let v2_z = output.models[0].vertices[v2.vertexIndex - 1].y
-            let v2_y = output.models[0].vertices[v2.vertexIndex - 1].z
+            let v2_y = output.models[0].vertices[v2.vertexIndex - 1].y
+            let v2_z = output.models[0].vertices[v2.vertexIndex - 1].z
 
             x_min = Math.min(v1_x, Math.min(x_min, v2_x))
             y_min = Math.min(v1_y, Math.min(y_min, v2_y))

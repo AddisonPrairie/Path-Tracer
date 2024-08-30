@@ -2,23 +2,18 @@
 function initDebug(device, canvas, trace) {
     const CANVAS = initCanvas(device, canvas)
 
-    let r1   = 0.
-    let r2   = 0.
+    let r1   = 3.1415 * 1.8
+    let r2   = .6
     let dist = 10
 
-    let lookAt = [0, 0, 0]
+    let lookAt = [3, 3, 3]
     let position = [
         lookAt[0] + Math.cos(r1) * Math.cos(r2) * dist,
         lookAt[1] + Math.sin(r1) * Math.cos(r2) * dist,
         lookAt[2] + Math.sin(r2) * dist
     ]
 
-    console.log(lookAt)
-    console.log(position)
-
     const { VS, FS, CS } = SRC()
-
-    console.log(CS)
 
     const IMG_BUFFER = device.createBuffer({
         size: CANVAS.w * CANVAS.h * 16,
@@ -72,12 +67,12 @@ function initDebug(device, canvas, trace) {
     })
 
     const COMPUTE_SM = device.createShaderModule({
-        code: CS
+        code: CS + trace.closestHitCode
     })
 
     const COMPUTE_PIPELINE = device.createComputePipeline({
         layout: device.createPipelineLayout({
-            bindGroupLayouts: [BG_LAYOUT]
+            bindGroupLayouts: [BG_LAYOUT, trace.bindGroupLayout]
         }),
         compute: {
             module: COMPUTE_SM,
@@ -93,6 +88,7 @@ function initDebug(device, canvas, trace) {
             const P  = CE.beginComputePass()
             P.setPipeline(COMPUTE_PIPELINE)
             P.setBindGroup(0, BG)
+            P.setBindGroup(1, trace.bindGroup)
             P.dispatchWorkgroups(Math.ceil(CANVAS.w / 8), Math.ceil(CANVAS.h / 8))
             P.end()
             device.queue.submit([CE.finish()])
@@ -136,13 +132,13 @@ function initDebug(device, canvas, trace) {
         const sw_f : vec2f = vec2f(${CANVAS.w}., ${CANVAS.h}.);
         const sw_u : vec2u = vec2u(${CANVAS.w}u, ${CANVAS.h}u);
 
-        const     fov :   f32 = 60.f;
+        const     fov :   f32 = 80.f;
         const  sinfov :   f32 = sin(.5 * fov * Pi / 180.f);
         const  aspect :   f32 = ${CANVAS.w / CANVAS.h}f;
 
         const  lookAt : vec3f = vec3f(${lookAt[0]},${lookAt[1]}, ${lookAt[2]});
         const     pos : vec3f = vec3f(${position[0]},${position[1]},${position[2]});
-        const forward : vec3f = lookAt - pos;
+        const forward : vec3f = normalize(lookAt - pos);
         const   right : vec3f = normalize(vec3f(forward.y, -forward.x, 0.));
         const      up : vec3f = cross(right, forward);
 
@@ -154,7 +150,23 @@ function initDebug(device, canvas, trace) {
 
             var img_idx : i32 = dot(coord, vec2i(1, ${CANVAS.w}));
 
-            image_buffer[img_idx] = vec4f(vec2f(coord) / sw_f, 0., 1.);
+            var o : vec3f = vec3f(-5., 0., 0.);
+            var d : vec3f = vec3f( 1., 0., 0.);
+
+            getCameraRay(vec2f(coord), &o, &d);
+
+            var res : f32 = intersect_bvh(o, d);
+            var col : vec3f = vec3f(0.f);
+
+            if (res > 1e5f) {
+                col = vec3f(0.f);
+            } else {
+                col = vec3f(res / 30.);
+            }
+
+            image_buffer[img_idx] = vec4f(
+                vec3f(col), 1.
+            );
         }
         
         fn getCameraRay(coord : vec2f, o : ptr<function, vec3f>, d : ptr<function, vec3f>) {
