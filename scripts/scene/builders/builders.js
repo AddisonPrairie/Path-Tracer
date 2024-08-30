@@ -151,7 +151,7 @@ function initBuilders(device) {
     async function buildMeshBVH(mesh) {
         // parse the OBJ file to get the list of triangles, mesh bounds, etc.
         const triangles = parseObj(mesh.file)
-
+        
         // create GPU triangle buffer and copy values to it
         const I_TRIANGE_BUFFER = device.createBuffer({
             size: triangles.numTriangles * 48,
