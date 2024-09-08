@@ -21,7 +21,7 @@ window.onload = async () => {
     scene.registerMesh({ file: bunnyFile })
     scene.registerMesh({ file: buddhaFile })
     
-    for (var i = 0; i < 1000; i++) {
+    for (var i = 0; i < 20; i++) {
         scene.instanceMesh(Math.floor(0), [
             6 * Math.random(),
             6 * Math.random(),
