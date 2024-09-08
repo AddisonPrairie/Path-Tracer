@@ -1,5 +1,3 @@
-
-
 function initScene(device) {
 
     const builders = initBuilders(device)

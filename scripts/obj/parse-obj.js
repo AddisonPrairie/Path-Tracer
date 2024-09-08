@@ -1,7 +1,4 @@
-
 function parseObj(file) {
-    const objFile = new OBJFile(file)
-    const output  = objFile.parse()
 
     let numTris = 0
     let trisArr = []
@@ -9,55 +6,76 @@ function parseObj(file) {
     let x_min =  1e30
     let y_min =  1e30
     let z_min =  1e30
-
     let x_max = -1e30
     let y_max = -1e30
     let z_max = -1e30
 
-    for (var x = 0; x < output.models[0].faces.length; x++) {
-        let face = output.models[0].faces[x]
+    {
+        const lines = file.split("\n")
+        let vertexPositions = [1e30, 1e30, 1e30]
 
-        let vr = face.vertices[0]
+        for (var x = 0; x < lines.length; x++) {
+            const line = lines[x]
 
-        let vr_x = output.models[0].vertices[vr.vertexIndex - 1].x
-        let vr_y = output.models[0].vertices[vr.vertexIndex - 1].y
-        let vr_z = output.models[0].vertices[vr.vertexIndex - 1].z
+            if (line.length <= 1) continue
 
-        x_min = Math.min(x_min, vr_x)
-        y_min = Math.min(y_min, vr_y)
-        z_min = Math.min(z_min, vr_z)
+            if (
+                line[0] === "v" || line[0] === "f" || line[0] === "o"
+            ) {
+                const tokens = line.split(/\s+/)
 
-        x_max = Math.max(x_max, vr_x)
-        y_max = Math.max(y_max, vr_y)
-        z_max = Math.max(z_max, vr_z)
+                switch (tokens[0]) {
+                    case "v":
+                        let vx = parseFloat(tokens[1])
+                        let vy = parseFloat(tokens[2])
+                        let vz = parseFloat(tokens[3])
 
-        for (var y = 1; y < face.vertices.length - 1; y++) {
-            let v1 = face.vertices[y + 0]
-            let v2 = face.vertices[y + 1]
+                        x_min = Math.min(x_min, vx)
+                        x_max = Math.max(x_max, vx)
+                        y_min = Math.min(y_min, vy)
+                        y_max = Math.max(y_max, vy)
+                        z_min = Math.min(z_min, vz)
+                        z_max = Math.max(z_max, vz)
 
-            let v1_x = output.models[0].vertices[v1.vertexIndex - 1].x
-            let v1_y = output.models[0].vertices[v1.vertexIndex - 1].y
-            let v1_z = output.models[0].vertices[v1.vertexIndex - 1].z
+                        vertexPositions.push(vx, vy, vz)
+                        break
+                    case "f":
+                        let idxs = []
 
-            let v2_x = output.models[0].vertices[v2.vertexIndex - 1].x
-            let v2_y = output.models[0].vertices[v2.vertexIndex - 1].y
-            let v2_z = output.models[0].vertices[v2.vertexIndex - 1].z
+                        for (var y = 1; y < tokens.length; y++) {
+                            let idx = parseInt(tokens[y])
 
-            x_min = Math.min(v1_x, Math.min(x_min, v2_x))
-            y_min = Math.min(v1_y, Math.min(y_min, v2_y))
-            z_min = Math.min(v1_z, Math.min(z_min, v2_z))
+                            if (!isNaN(idx)) idxs.push(idx)
+                        }
 
-            x_max = Math.max(v1_x, Math.max(x_max, v2_x))
-            y_max = Math.max(v1_y, Math.max(y_max, v2_y))
-            z_max = Math.max(v1_z, Math.max(z_max, v2_z))
+                        let vrx = vertexPositions[3 * idxs[0] + 0]
+                        let vry = vertexPositions[3 * idxs[0] + 1]
+                        let vrz = vertexPositions[3 * idxs[0] + 2]
 
-            trisArr.push(
-                vr_x, vr_y, vr_z, 3.1415,
-                v1_x, v1_y, v1_z, 3.1415,
-                v2_x, v2_y, v2_z, 3.1415,
-            )
+                        for (var i = 1; i < idxs.length - 1; i++) {
+                            let v1x = vertexPositions[3 * idxs[i + 0] + 0]
+                            let v1y = vertexPositions[3 * idxs[i + 0] + 1]
+                            let v1z = vertexPositions[3 * idxs[i + 0] + 2]
+                            let v2x = vertexPositions[3 * idxs[i + 1] + 0]
+                            let v2y = vertexPositions[3 * idxs[i + 1] + 1]
+                            let v2z = vertexPositions[3 * idxs[i + 1] + 2]
+                            
+                            numTris++
+                            trisArr.push(
+                                vrx, vry, vrz, 3.1415,
+                                v1x, v1y, v1z, 3.1415,
+                                v2x, v2y, v2z, 3.1415
+                            )
+                        }
 
-            numTris++
+                        break
+                    case "o":
+                        vertexPositions = [1e30, 1e30, 1e30]
+                        break
+                    default:
+                        break
+                }
+            }
         }
     }
 

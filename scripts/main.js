@@ -1,5 +1,3 @@
-
-
 window.onload = async () => {
     // initialize WebGPU
     const adapter = await navigator.gpu?.requestAdapter()
@@ -23,15 +21,13 @@ window.onload = async () => {
     scene.registerMesh({ file: bunnyFile })
     scene.registerMesh({ file: buddhaFile })
     
-    for (var i = 0; i < 200; i++) {
-        scene.instanceMesh(Math.floor(Math.random() * 2), [
+    for (var i = 0; i < 1000; i++) {
+        scene.instanceMesh(Math.floor(0), [
             6 * Math.random(),
             6 * Math.random(),
             6 * Math.random(),
         ], [
-            Math.random() * 6.28,
-            Math.random() * 6.28,
-            Math.random() * 6.28,
+            Math.PI * .5, 0, Math.PI * 1.25
         ], [
             .5, .5, .5
         ])
@@ -43,9 +39,18 @@ window.onload = async () => {
 
     const debug = initDebug(device, document.querySelector("#canvas"), trace)
 
-    await debug.draw()
-
     const t1 = Date.now()
-
     console.log(t1 - t0)
+
+    for (var x = 0; x < 10; x++) {
+        const ta = Date.now()
+        await debug.draw()
+        const tb = Date.now()
+
+        console.log(tb - ta)
+    }
+
+    
+
+   
 }

@@ -1,5 +1,3 @@
-
-
 function initBuilders(device) {
     const radixSortKernel = initRadixSortKernel(device)
     const radixTreeKernel = initRadixTreeKernel(device)
