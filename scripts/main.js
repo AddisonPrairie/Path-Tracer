@@ -49,8 +49,4 @@ window.onload = async () => {
 
         console.log(tb - ta)
     }
-
-    
-
-   
 }
