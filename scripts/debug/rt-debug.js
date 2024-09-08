@@ -1,5 +1,5 @@
 
-function initDebug(device, canvas, trace) {
+function initDebug(device, canvas, scene) {
     const CANVAS = initCanvas(device, canvas)
 
     let r1   = 3.1415 * 1.8
@@ -67,12 +67,12 @@ function initDebug(device, canvas, trace) {
     })
 
     const COMPUTE_SM = device.createShaderModule({
-        code: CS + trace.closestHitCode
+        code: CS + scene.kernels.getNearestHitCode(1)
     })
 
     const COMPUTE_PIPELINE = device.createComputePipeline({
         layout: device.createPipelineLayout({
-            bindGroupLayouts: [BG_LAYOUT, trace.bindGroupLayout]
+            bindGroupLayouts: [BG_LAYOUT, scene.kernels.getSceneBindGroupInfo().bindGroupLayout]
         }),
         compute: {
             module: COMPUTE_SM,
@@ -88,7 +88,7 @@ function initDebug(device, canvas, trace) {
             const P  = CE.beginComputePass()
             P.setPipeline(COMPUTE_PIPELINE)
             P.setBindGroup(0, BG)
-            P.setBindGroup(1, trace.bindGroup)
+            P.setBindGroup(1, scene.kernels.getSceneBindGroupInfo().bindGroup)
             P.dispatchWorkgroups(Math.ceil(CANVAS.w / 8), Math.ceil(CANVAS.h / 8))
             P.end()
             device.queue.submit([CE.finish()])

@@ -35,17 +35,17 @@ window.onload = async () => {
 
     await scene.build()
 
-    const trace = scene.getTraceKernels(1)
-
-    const debug = initDebug(device, document.querySelector("#canvas"), trace)
+    const debug = initDebug(device, document.querySelector("#canvas"), scene)
 
     const t1 = Date.now()
     console.log(t1 - t0)
 
-    for (var x = 0; x < 10; x++) {
+    for (var x = 0; x < 1; x++) {
         const ta = Date.now()
         await debug.draw()
         const tb = Date.now()
         console.log(tb - ta)
     }
+
+    const pt = initPathTracer({ device, scene })
 }

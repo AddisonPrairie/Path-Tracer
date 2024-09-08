@@ -2,6 +2,42 @@ function initRayTraceKernel(params) {
 
     const WG_SIZE = 64
 
+    const SM = device.createShaderModule({
+        code: SRC(),
+        label: "ray trace shader module"
+    })
+
+    const PIPELINE = device.createComputePipeline({
+        layout: device.createPipelineLayout({
+            bindGroupLayouts: [
+                params.bindGroupLayouts.pathState, 
+                params.bindGroupLayouts.stage3Queues,
+                params.bindGroupLayouts.scene
+            ]
+        }),
+        compute: {
+            module: SM,
+            entryPoint: "main"
+        }
+    })
+
+    return { execute }
+
+    async function execute() {
+        const CE = device.createCommandEncoder()
+        const  P = CE.beginComputePass()
+
+        P.setPipeline(PIPELINE)
+        P.setBindGroup(0, params.bindGroups.pathState)
+        P.setBindGroup(1, params.bindGroups.stage3Queues)
+        P.setBindGroup(2, params.bindGroups.scene)
+        P.dispatchWorkgroups(Math.ceil(params.numPaths / WG_SIZE))
+        P.end()
+
+        device.queue.submit([CE.finish()])
+        await device.queue.onSubmittedWorkDone()
+    }
+
 
     function SRC() {
         return /* wgsl */ `
@@ -9,6 +45,8 @@ function initRayTraceKernel(params) {
 
         @group(1) @binding(0) var<storage, read_write> ray_trace_queue_size : i32;
         @group(1) @binding(1) var<storage, read_write> ray_trace_queue : array<i32>;
+
+        ${params.scene.getNearestHitShaderCode(1)}
 
         @compute @workgroup_size(${WG_SIZE})
         fn main(@builtin(global_invocation_id) global_id : vec3u) {

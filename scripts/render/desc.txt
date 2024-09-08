@@ -17,8 +17,8 @@ Description of kernels & memory layout
     [16] material_throughput_pdf : vec4f
 
     ## read by ray tracing kernels
-    [16] path_pos : vec3f
-    [16] path_dir : vec3f
+    [16] path_o : vec3f
+    [16] path_d : vec3f
 
     ## output of ray tracing kernels
     [ 4] hit_obj : i32
