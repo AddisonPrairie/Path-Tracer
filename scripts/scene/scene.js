@@ -72,7 +72,7 @@ function initScene(device) {
         }
     }
 
-    function getTraceKernels() {
+    function getTraceKernels(sceneBufferGroup) {
         if (sceneGPUState == null) {
             console.warn("ERROR in scene::getTraceKernels: should not call before scene is built!")
             return
@@ -189,10 +189,10 @@ function initScene(device) {
                 v2 : vec3f
             };
 
-            @group(1) @binding(0) var<storage, read_write>    tlas_bvh : array<BVHNode>;
-            @group(1) @binding(1) var<storage, read_write>     objects : array<Object>;
-            @group(1) @binding(2) var<storage, read_write>    mesh_bvh : array<BVHNode>;
-            @group(1) @binding(3) var<storage, read_write>   mesh_tris : array<Triangle>;
+            @group(${sceneBufferGroup}) @binding(0) var<storage, read_write>    tlas_bvh : array<BVHNode>;
+            @group(${sceneBufferGroup}) @binding(1) var<storage, read_write>     objects : array<Object>;
+            @group(${sceneBufferGroup}) @binding(2) var<storage, read_write>    mesh_bvh : array<BVHNode>;
+            @group(${sceneBufferGroup}) @binding(3) var<storage, read_write>   mesh_tris : array<Triangle>;
 
             var<private> stack : array<i32, 32>;
 

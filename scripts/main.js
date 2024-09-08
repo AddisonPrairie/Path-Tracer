@@ -17,7 +17,7 @@ window.onload = async () => {
 
     const t0 = Date.now()
 
-    //scene.registerMesh({ file: cowFile })
+    scene.registerMesh({ file: cowFile })
     scene.registerMesh({ file: bunnyFile })
     scene.registerMesh({ file: buddhaFile })
     
@@ -35,7 +35,7 @@ window.onload = async () => {
 
     await scene.build()
 
-    const trace = scene.getTraceKernels()
+    const trace = scene.getTraceKernels(1)
 
     const debug = initDebug(device, document.querySelector("#canvas"), trace)
 
@@ -46,7 +46,6 @@ window.onload = async () => {
         const ta = Date.now()
         await debug.draw()
         const tb = Date.now()
-
         console.log(tb - ta)
     }
 }

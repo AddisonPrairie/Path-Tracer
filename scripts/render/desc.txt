@@ -1,0 +1,80 @@
+
+Description of kernels & memory layout
+
+|==============================|
+|           MEMORY             |
+|==============================|
+
+[ PATH STATE ]
+
+    ## general
+    [ 4] pixel_index : i32
+    [ 4] num_bounces : i32
+
+    [16] path_throughput : vec3f
+
+    ## used to modulate light
+    [16] material_throughput_pdf : vec4f
+
+    ## read by ray tracing kernels
+    [16] path_pos : vec3f
+    [16] path_dir : vec3f
+
+    ## output of ray tracing kernels
+    [ 4] hit_obj : i32
+    [ 4] hit_tri : i32
+
+[ IMAGE STATE ]
+
+    accumulated : vec4f
+
+
+[ QUEUES ]
+    
+    {1} -> {2}
+
+    - CAMERA
+    - MATERIAL
+
+    {2} -> {3}
+
+    - NEXT EVENT ESTIMATION
+    - PRIMARY RAY TRACE
+
+|==============================|
+|           KERNELS            |
+|==============================|
+
+[ STAGE 1 ]
+
+    { KERNEL }  LOGIC
+
+    -> 
+
+[ STAGE 2 ]
+
+    { KERNEL } CAMERA
+
+    -> Read in index from QUEUE, get pixel index from PATH STATE, compute ray position and direction. Write position and direction to PATH STATE and add index to PRIMARY RAY TRACE QUEUE.
+
+
+    { KERNEL } MATERIAL
+
+    -> Read in index from QUEUE, look up hit object and triangle from PATH STATE. Compute hit distance, hit position, hit normal from triangle. Switch material depending on hit mesh, sampling a new ray direction (and pdf), computing the position, and evaluating the brdf. Write these to PATH STATE and add index to PRIMARY RAY TRACE QUEUE. TODO: NEE!
+
+[ STAGE 3 ]
+
+    { KERNEL } PRIMARY RAY TRACE
+
+    -> Read in index from QUEUE, look up ray position and direction from PATH STATE. Compute nearest intersection to scene, writing the object and triangle indexes to PATH STATE. 
+
+    { KERNEL } NEXT EVENT ESTIMATION
+
+    -> TODO
+
+[ STAGE 4 ]
+
+    { KERNEL } CLEAN UP
+
+    -> Zero atomic counters form stage 2 and 3 queues.
+
