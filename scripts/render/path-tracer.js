@@ -18,6 +18,12 @@ function initPathTracer(params) {
         sharedStructCode: SHARED_STRUCTS_CODE()
     })
 
+    const cameraKernel = initCameraKernel({
+        bindGroups, bindGroupLayouts, device,
+        numPaths: NUM_PATHS,
+        sharedStructCode: SHARED_STRUCTS_CODE()
+    })
+
     function SHARED_STRUCTS_CODE() {
         return /* wgsl */ `
         struct PathState {
@@ -33,6 +39,13 @@ function initPathTracer(params) {
 
             hit_obj : array<i32, ${params.numActivePaths}>,
             hit_tri : array<i32, ${params.numActivePaths}>
+        };
+        
+        struct Uniforms {
+            image_size : vec2i,
+
+            camera_position : vec3f,
+            camera_look_at  : vec3f,
         };`
     }
 
