@@ -1,18 +1,19 @@
-function initCameraKernel(params) {
+function initMaterialKernel(params) {
     const device = params.device
 
     const WG_SIZE = 64
 
     const SM = device.createShaderModule({
         code: SRC(),
-        label: "camera shader module"
+        label: "material shader module"
     })
 
     const PIPELINE = device.createComputePipeline({
         layout: device.createPipelineLayout({
             bindGroupLayouts: [
                 params.bindGroupLayouts.pathState, 
-                params.bindGroupLayouts.stage2Queues
+                params.bindGroupLayouts.stage2Queues,
+                params.bindGroupLayouts.scene
             ]
         }),
         compute: {
@@ -30,6 +31,7 @@ function initCameraKernel(params) {
         P.setPipeline(PIPELINE)
         P.setBindGroup(0, params.bindGroups.pathState)
         P.setBindGroup(1, params.bindGroups.stage2Queues)
+        P.setBindGroup(2, params.bindGroups.scene)
         P.dispatchWorkgroups(Math.ceil(params.numPaths / WG_SIZE))
         P.end()
 
@@ -50,7 +52,8 @@ function initCameraKernel(params) {
         @group(1) @binding(3) var<storage, read_write> stage_3_queue_size : atomic<i32>;
         @group(1) @binding(4) var<storage, read_write> ray_trace_queue : i32;
 
-        var<workgroup> wg_stage_3_queue_size : atomic<i32>;
+        ${params.scene.kernels.getHitInfoCode(2)}
+
         var<workgroup> wg_ray_trace_queue : array<i32, ${WG_SIZE}>;
 
         @compute @workgroup_size(${WG_SIZE})
@@ -61,19 +64,19 @@ function initCameraKernel(params) {
             } else {
                 // compute camera ray
                 var path_idx : i32 = camera_queue[queue_idx];
-                var pixel_idx : i32 = path_state.pixel_index[path_idx];
-                var coord : vec2f = vec2f(vec2i(pixel_idx % uniforms.image_size.x, pixel_idx / uniforms.image_size.x));
 
-                var o : vec3f;
-                var d : vec3f;
+                var o : vec3f = path_state.path_o[path_idx];
+                var d : vec3f = path_state.path_d[path_idx];
 
-                getCameraRay(coord, &o, &d);
+                var hit_obj : i32 = path_state.hit_obj[path_idx];
+                var hit_tri : i32 = path_state.hit_tri[path_idx];
 
-                path_state.path_o[path_idx] = o;
-                path_state.path_d[path_idx] = d;
+                var hit_info : TriangleHitInfo = get_triangle_hit_info(o, d, hit_obj, hit_tri);
 
-                var l_idx : i32 = atomicAdd(&wg_stage_3_queue_size, 1);
-                wg_ray_trace_queue[l_idx] = path_idx;
+                //path_state.path_o[path_idx] = o;
+                //path_state.path_d[path_idx] = d;
+
+                //wg_ray_trace_queue[local_id.x] = path_idx;
             }
 
             workgroupBarrier();
@@ -82,30 +85,14 @@ function initCameraKernel(params) {
             if (local_id.x == 0u) {
                 var offset : i32 = atomicAdd(&stage_3_queue_size, ${WG_SIZE});
 
-                var num_writes = atomicLoad(&wg_stage_3_queue_size);
-                for (var x = 0; x < num_writes; x++) {
+                for (var x = 0; x < ${WG_SIZE}; x++) {
                     ray_trace_queue[offset + x] = wg_ray_trace_queue[x];
                 }
             }
         }
         
-        fn getCameraRay(coord : vec2f, o : ptr<function, vec3f>, d : ptr<function, vec3f>) {
-            var sspace : vec2f = coord / vec2f(uniforms.image_size);
-            sspace = sspace * 2.f - vec2f(1.f);
-            sspace.y *= -1.f;
-
-            var local : vec3f = vec3f(
-                uniforms.camera_aspect_ratio * sspace.x * sin(uniforms.camera_fov),
-                1.f,
-                sspace.y * sin(uniforms.camera_fov)
-            );
-
-            var forward : vec3f = normalize(uniforms.camera_look_at - uniforms.camera_position);
-            var   right : vec3f = normalize(vec3f(forward.y, -forward.x, 0.));
-            var      up : vec3f = cross(right, forward);
-
-            *o = uniforms.camera_position;
-            *d = toWorld(right, forward, up, normalize(local));
+        fn toLocal(v_x : vec3f, v_y : vec3f, v_z : vec3f, w : vec3f) -> vec3f {
+            return vec3f(dot(v_x, w), dot(v_y, w), dot(v_z, w));
         }
 
         fn toWorld(v_x : vec3f, v_y : vec3f, v_z : vec3f, w : vec3f) -> vec3f {
