@@ -1,4 +1,5 @@
 function initRayTraceKernel(params) {
+    const device = params.device
 
     const WG_SIZE = 64
 
@@ -38,15 +39,17 @@ function initRayTraceKernel(params) {
         await device.queue.onSubmittedWorkDone()
     }
 
-
     function SRC() {
         return /* wgsl */ `
+        ${params.sharedStructCode}
+
         @group(0) @binding(0) var<storage, read_write> path_state : PathState;
+        @group(0) @binding(1) var<uniform> uniforms : Uniforms;
 
         @group(1) @binding(0) var<storage, read_write> ray_trace_queue_size : i32;
         @group(1) @binding(1) var<storage, read_write> ray_trace_queue : array<i32>;
 
-        ${params.scene.getNearestHitShaderCode(1)}
+        ${params.scene.kernels.getNearestHitCode(2)}
 
         @compute @workgroup_size(${WG_SIZE})
         fn main(@builtin(global_invocation_id) global_id : vec3u) {

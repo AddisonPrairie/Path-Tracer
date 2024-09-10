@@ -1,4 +1,5 @@
 function initPathTracer(params) {
+    const device = params.device
 
     const NUM_PATHS = 1_000_000
     const BYTES_PER_PATH = 4
@@ -8,193 +9,16 @@ function initPathTracer(params) {
     const bindGroupLayouts = {}
     const buffers = {}
 
-    {// create bind group info for scene
-        const info = params.scene.kernels.getSceneBindGroupInfo()
-        bindGroupLayouts.scene = info.bindGroupLayout
-        bindGroups.scene = info.bindGroup
-    }
+    createBindGroups()
 
-    {// create bind group info for path state
-        bindGroupLayouts.pathState = device.createBindGroupLayout({
-            entries: [
-                {
-                    binding: 0,
-                    visibility: GPUShaderStage.COMPUTE,
-                    buffer: {
-                        type: "storage"
-                    }
-                }
-            ]
-        })
-        bindGroups.pathState = device.createBindGroup({
-            layout: bindGroupLayouts.pathState,
-            entries: [
-                {
-                    binding: 0,
-                    visibility: GPUShaderStage.COMPUTE,
-                    resource: {
-                        buffer: device.createBuffer({
-                            size: BYTES_PER_PATH * NUM_PATHS,
-                            usage: GPUBufferUsage.STORAGE
-                        })
-                    }
-                }
-            ]
-        })
-    }
+    const rayTraceKernel = initRayTraceKernel({
+        bindGroups, bindGroupLayouts, device,
+        scene: params.scene,
+        numPaths: NUM_PATHS,
+        sharedStructCode: SHARED_STRUCTS_CODE()
+    })
 
-    {// create bind group info for queues
-        const stage2QueueCountBuffer = device.createBuffer({
-            size: 8,
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
-        })
-
-        const stage3QueueCountBuffer = device.createBuffer({
-            size: 8,
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
-        })
-
-        const cameraQueueBuffer = deivce.createBuffer({
-            size: 4 * NUM_PATHS,
-            usage: GPUBufferUsage.STORAGE
-        })
-
-        const materialQueueBuffer = device.createBuffer({
-            size: 4 * NUM_PATHS,
-            usage: GPUBufferUsage.STORAGE
-        })
-
-        const rayTraceQueueBuffer = device.createBuffer({
-            size: 4 * NUM_PATHS,
-            usage: GPUBufferUsage.STORAGE
-        })
-
-        // also store the two queue count buffers so they can be cleared later
-        buffers.stage2QueueCountBuffer = stage2QueueCountBuffer
-        buffers.stage3QueueCountBuffer = stage3QueueCountBuffer
-
-        bindGroupLayouts.stage2Queues = device.createBindGroupLayout({
-            entries: [
-                {
-                    binding: 0,
-                    visibility: GPUShaderStage.COMPUTE,
-                    buffer: {
-                        type: "storage"
-                    }
-                },
-                {
-                    binding: 1,
-                    visibility: GPUShaderStage.COMPUTE,
-                    buffer: {
-                        type: "storage"
-                    }
-                },
-                {
-                    binding: 2,
-                    visibility: GPUShaderStage.COMPUTE,
-                    buffer: {
-                        type: "storage"
-                    }
-                },
-                {
-                    binding: 3,
-                    visibility: GPUShaderStage.COMPUTE,
-                    buffer: {
-                        type: "storage"
-                    }
-                },
-                {
-                    binding: 4,
-                    visibility: GPUShaderStage.COMPUTE,
-                    buffer: {
-                        type: "storage"
-                    }
-                }
-            ]
-        })
-
-        bindGroups.stage2Queues = device.createBindGroup({
-            layout: bindGroupLayouts.stage2Queues,
-            entries: [
-                {
-                    binding: 0,
-                    visibility: GPUShaderStage.COMPUTE,
-                    resource: {
-                        buffer: stage2QueueCountBuffer
-                    }
-                },
-                {
-                    binding: 1,
-                    visibility: GPUShaderStage.COMPUTE,
-                    resource: {
-                        buffer: cameraQueueBuffer
-                    }
-                },
-                {
-                    binding: 2,
-                    visibility: GPUShaderStage.COMPUTE,
-                    resource: {
-                        buffer: materialQueueBuffer
-                    }
-                },
-                {
-                    binding: 3,
-                    visibility: GPUShaderStage.COMPUTE,
-                    resource: {
-                        buffer: stage3QueueCountBuffer
-                    }
-                },
-                {
-                    binding: 4,
-                    visibility: GPUShaderStage.COMPUTE,
-                    resource: {
-                        buffer: rayTraceQueueBuffer
-                    }
-                }
-            ]
-        })
-
-        bindGroupLayouts.stage3Queues = device.createBindGroupLayout({
-            entries: [
-                {
-                    binding: 0,
-                    visibility: GPUShaderStage.COMPUTE,
-                    buffer: {
-                        type: "storage"
-                    }
-                },
-                {
-                    binding: 1,
-                    visibility: GPUShaderStage.COMPUTE,
-                    buffer: {
-                        type: "storage"
-                    }
-                }
-            ]
-        })
-
-        bindGroups.stage3Queues = device.createBindGroup({
-            entries: [
-                {
-                    binding: 0,
-                    visibility: GPUShaderStage.COMPUTE,
-                    resource: {
-                        buffer: stage3QueueCountBuffer
-                    }
-                },
-                {
-                    binding: 1,
-                    visibility: GPUShaderStage.COMPUTE,
-                    resource: {
-                        buffer: rayTraceQueueBuffer
-                    }
-                }
-            ]
-        })
-    }
-
-
-    function PATH_STATE_DESC() {
+    function SHARED_STRUCTS_CODE() {
         return /* wgsl */ `
         struct PathState {
             pixel_index : array<i32, ${params.numActivePaths}>,
@@ -210,5 +34,193 @@ function initPathTracer(params) {
             hit_obj : array<i32, ${params.numActivePaths}>,
             hit_tri : array<i32, ${params.numActivePaths}>
         };`
+    }
+
+    function createBindGroups() {
+        {// create bind group info for scene
+            const info = params.scene.kernels.getSceneBindGroupInfo()
+            bindGroupLayouts.scene = info.bindGroupLayout
+            bindGroups.scene = info.bindGroup
+        }
+    
+        {// create bind group info for path state
+            bindGroupLayouts.pathState = device.createBindGroupLayout({
+                entries: [
+                    {
+                        binding: 0,
+                        visibility: GPUShaderStage.COMPUTE,
+                        buffer: {
+                            type: "storage"
+                        }
+                    }
+                ]
+            })
+            bindGroups.pathState = device.createBindGroup({
+                layout: bindGroupLayouts.pathState,
+                entries: [
+                    {
+                        binding: 0,
+                        visibility: GPUShaderStage.COMPUTE,
+                        resource: {
+                            buffer: device.createBuffer({
+                                size: BYTES_PER_PATH * NUM_PATHS,
+                                usage: GPUBufferUsage.STORAGE
+                            })
+                        }
+                    }
+                ]
+            })
+        }
+    
+        {// create bind group info for queues
+            const stage2QueueCountBuffer = device.createBuffer({
+                size: 8,
+                usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+            })
+    
+            const stage3QueueCountBuffer = device.createBuffer({
+                size: 8,
+                usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+            })
+    
+            const cameraQueueBuffer = device.createBuffer({
+                size: 4 * NUM_PATHS,
+                usage: GPUBufferUsage.STORAGE
+            })
+    
+            const materialQueueBuffer = device.createBuffer({
+                size: 4 * NUM_PATHS,
+                usage: GPUBufferUsage.STORAGE
+            })
+    
+            const rayTraceQueueBuffer = device.createBuffer({
+                size: 4 * NUM_PATHS,
+                usage: GPUBufferUsage.STORAGE
+            })
+    
+            // also store the two queue count buffers so they can be cleared later
+            buffers.stage2QueueCountBuffer = stage2QueueCountBuffer
+            buffers.stage3QueueCountBuffer = stage3QueueCountBuffer
+    
+            bindGroupLayouts.stage2Queues = device.createBindGroupLayout({
+                entries: [
+                    {
+                        binding: 0,
+                        visibility: GPUShaderStage.COMPUTE,
+                        buffer: {
+                            type: "storage"
+                        }
+                    },
+                    {
+                        binding: 1,
+                        visibility: GPUShaderStage.COMPUTE,
+                        buffer: {
+                            type: "storage"
+                        }
+                    },
+                    {
+                        binding: 2,
+                        visibility: GPUShaderStage.COMPUTE,
+                        buffer: {
+                            type: "storage"
+                        }
+                    },
+                    {
+                        binding: 3,
+                        visibility: GPUShaderStage.COMPUTE,
+                        buffer: {
+                            type: "storage"
+                        }
+                    },
+                    {
+                        binding: 4,
+                        visibility: GPUShaderStage.COMPUTE,
+                        buffer: {
+                            type: "storage"
+                        }
+                    }
+                ]
+            })
+    
+            bindGroups.stage2Queues = device.createBindGroup({
+                layout: bindGroupLayouts.stage2Queues,
+                entries: [
+                    {
+                        binding: 0,
+                        visibility: GPUShaderStage.COMPUTE,
+                        resource: {
+                            buffer: stage2QueueCountBuffer
+                        }
+                    },
+                    {
+                        binding: 1,
+                        visibility: GPUShaderStage.COMPUTE,
+                        resource: {
+                            buffer: cameraQueueBuffer
+                        }
+                    },
+                    {
+                        binding: 2,
+                        visibility: GPUShaderStage.COMPUTE,
+                        resource: {
+                            buffer: materialQueueBuffer
+                        }
+                    },
+                    {
+                        binding: 3,
+                        visibility: GPUShaderStage.COMPUTE,
+                        resource: {
+                            buffer: stage3QueueCountBuffer
+                        }
+                    },
+                    {
+                        binding: 4,
+                        visibility: GPUShaderStage.COMPUTE,
+                        resource: {
+                            buffer: rayTraceQueueBuffer
+                        }
+                    }
+                ]
+            })
+    
+            bindGroupLayouts.stage3Queues = device.createBindGroupLayout({
+                entries: [
+                    {
+                        binding: 0,
+                        visibility: GPUShaderStage.COMPUTE,
+                        buffer: {
+                            type: "storage"
+                        }
+                    },
+                    {
+                        binding: 1,
+                        visibility: GPUShaderStage.COMPUTE,
+                        buffer: {
+                            type: "storage"
+                        }
+                    }
+                ]
+            })
+    
+            bindGroups.stage3Queues = device.createBindGroup({
+                layout: bindGroupLayouts.stage3Queues,
+                entries: [
+                    {
+                        binding: 0,
+                        visibility: GPUShaderStage.COMPUTE,
+                        resource: {
+                            buffer: stage3QueueCountBuffer
+                        }
+                    },
+                    {
+                        binding: 1,
+                        visibility: GPUShaderStage.COMPUTE,
+                        resource: {
+                            buffer: rayTraceQueueBuffer
+                        }
+                    }
+                ]
+            })
+        }
     }
 }
