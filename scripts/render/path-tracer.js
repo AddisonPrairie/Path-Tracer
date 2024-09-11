@@ -30,6 +30,8 @@ function initPathTracer(params) {
             pixel_index : array<i32, ${params.numActivePaths}>,
             num_bounces : array<i32, ${params.numActivePaths}>,
 
+            random_seed : array<f32, ${params.numActivePaths}>,
+
             path_throughput : array<vec3f, ${params.numActivePaths}>,
 
             material_throughput_pdf : array<vec4f, ${params.numActivePaths}>,

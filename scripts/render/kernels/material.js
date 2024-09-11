@@ -54,6 +54,7 @@ function initMaterialKernel(params) {
 
         ${params.scene.kernels.getHitInfoCode(2)}
 
+        var<workgroup> wg_stage_3_queue_size : atomic<i32>;
         var<workgroup> wg_ray_trace_queue : array<i32, ${WG_SIZE}>;
 
         @compute @workgroup_size(${WG_SIZE})
@@ -73,10 +74,31 @@ function initMaterialKernel(params) {
 
                 var hit_info : TriangleHitInfo = get_triangle_hit_info(o, d, hit_obj, hit_tri);
 
-                //path_state.path_o[path_idx] = o;
-                //path_state.path_d[path_idx] = d;
+                var hit_pos = o + d * hit_info.dist;
 
-                //wg_ray_trace_queue[local_id.x] = path_idx;
+                var o1 : vec3f = normalize(ortho(hit_info.normal));
+                var o2 : vec3f = normalize(cross(o1, res.norm));
+
+                var wo : vec3f = to_local(o1, o2, hit_info.normal, -d);
+
+                var random_seed : f32 = path_state.random_seed[path_idx];
+
+                var wi : vec3f = cosineSampleHemisphere(rand2(random_seed));
+                random_seed += 2.f;
+
+                var brdf = vec3f(.2);
+                var  pdf = 1.f;
+
+                d = toWorld(o1, o2, hit_info.normal, wi);
+
+
+                path_state.material_throughput_pdf[path_idx] = vec4f(brdf, pdf);
+                path_state.random_seed[path_idx] = random_seed;
+                path_state.path_o[path_idx] = hit_pos;
+                path_state.path_d[path_idx] = d;
+
+                var l_idx : i32 = atomicAdd(&wg_stage_3_queue_size, 1);
+                wg_ray_trace_queue[l_idx] = path_idx;
             }
 
             workgroupBarrier();
@@ -85,17 +107,46 @@ function initMaterialKernel(params) {
             if (local_id.x == 0u) {
                 var offset : i32 = atomicAdd(&stage_3_queue_size, ${WG_SIZE});
 
-                for (var x = 0; x < ${WG_SIZE}; x++) {
+                var num_writes = atomicLoad(&wg_stage_3_queue_size);
+                for (var x = 0; x < num_writes; x++) {
                     ray_trace_queue[offset + x] = wg_ray_trace_queue[x];
                 }
             }
         }
+
+        // sampling functions
+        fn cosineSampleHemisphere(r2 : vec2f) -> vec3f {
+            var d : vec2f = uniformSampleDisk(r2);
+            var z : f32 = sqrt(max(0., 1. - d.x * d.x - d.y * d.y));
+            return vec3f(d.xy, z);
+        }
+
+        fn uniformSampleDisk(r2 : vec2f) -> vec2f {
+            var r : f32 = sqrt(max(r2.x, 0.));
+            var theta : f32 = 2. * Pi * r2.y;
+            return vec2f(r * cos(theta), r * sin(theta));
+        }
+
+        // noise functions
+        fn rand2(seed : f32) -> vec2f {
+            var n : u32 = baseHash(bitcast<vec2u>(vec2f(seed + 1., seed + 2.)));
+            var rz : vec2u = vec2u(n, n * 48271u);
+            return vec2f(rz.xy & vec2u(0x7fffffffu))/f32(0x7fffffff);
+        }
+
+        // misc utility functions
+        fn ortho(v : vec3<f32>) -> vec3<f32> {
+            if (abs(v.x) > abs(v.y)) {
+                return vec3<f32>(-v.y, v.x, 0.);
+            }
+            return  vec3<f32>(0., -v.z, v.y);
+        }
         
-        fn toLocal(v_x : vec3f, v_y : vec3f, v_z : vec3f, w : vec3f) -> vec3f {
+        fn to_local(v_x : vec3f, v_y : vec3f, v_z : vec3f, w : vec3f) -> vec3f {
             return vec3f(dot(v_x, w), dot(v_y, w), dot(v_z, w));
         }
 
-        fn toWorld(v_x : vec3f, v_y : vec3f, v_z : vec3f, w : vec3f) -> vec3f {
+        fn to_world(v_x : vec3f, v_y : vec3f, v_z : vec3f, w : vec3f) -> vec3f {
             return v_x * w.x + v_y * w.y + v_z * w.z;
         }`
     }
