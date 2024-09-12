@@ -70,11 +70,13 @@ function initMaterialKernel(params) {
         @compute @workgroup_size(${WG_SIZE})
         fn main(@builtin(global_invocation_id) global_id : vec3u, @builtin(local_invocation_id) local_id : vec3u) {
             var queue_idx : i32 = i32(global_id.x);
-            if (queue_idx >= queues.stage_2_queue_size[0]) {
+            if (queue_idx >= queues.stage_2_queue_size[1]) {
                 
             } else {
-                // compute camera ray
-                var path_idx : i32 = queues.camera_queue[queue_idx];
+                var path_idx : i32 = queues.material_queue[queue_idx];
+
+                // the first bit being set means we processed a material hit
+                var material_flags : u32 = 1u;
 
                 var o : vec3f = path_state.path_o[path_idx];
                 var d : vec3f = path_state.path_d[path_idx];
@@ -96,14 +98,15 @@ function initMaterialKernel(params) {
                 var wi : vec3f = cosineSampleHemisphere(rand2(random_seed));
                 random_seed += 2.f;
 
-                var brdf = vec3f(.2);
+                var brdf = vec3f(.2f);
                 var  pdf = 1.f;
 
                 d = to_world(o1, o2, hit_info.normal, wi);
 
                 path_state.material_throughput_pdf[path_idx] = vec4f(brdf, pdf);
+                path_state.material_flags[path_idx] = material_flags;
                 path_state.random_seed[path_idx] = random_seed;
-                path_state.path_o[path_idx] = hit_pos;
+                path_state.path_o[path_idx] = hit_pos + hit_info.normal * .0001;
                 path_state.path_d[path_idx] = d;
 
                 var l_idx : i32 = atomicAdd(&wg_stage_3_queue_size, 1);
@@ -116,9 +119,11 @@ function initMaterialKernel(params) {
             if (local_id.x == 0u) {
                 var num_writes = atomicLoad(&wg_stage_3_queue_size);
 
-                var offset : i32 = atomicAdd(&queues.stage_3_queue_size[0], num_writes);
-                for (var x = 0; x < num_writes; x++) {
-                    queues.ray_trace_queue[offset + x] = wg_ray_trace_queue[x];
+                if (num_writes > 0) {
+                    var offset : i32 = atomicAdd(&queues.stage_3_queue_size[0], num_writes);
+                    for (var x = 0; x < num_writes; x++) {
+                        queues.ray_trace_queue[offset + x] = wg_ray_trace_queue[x];
+                    }
                 }
             }
         }

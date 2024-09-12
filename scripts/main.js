@@ -21,21 +21,21 @@ window.onload = async () => {
     scene.registerMesh({ file: bunnyFile })
     scene.registerMesh({ file: buddhaFile })
     
-    for (var i = 0; i < 20; i++) {
-        scene.instanceMesh(Math.floor(0), [
+    for (var i = 0; i < 50; i++) {
+        scene.instanceMesh(Math.floor(2), [
             6 * Math.random(),
             6 * Math.random(),
-            6 * Math.random(),
+            6 * Math.random()
         ], [
-            Math.PI * .5, 0, Math.PI * 1.25
+            Math.random() * 6.28, Math.random() * 6.28, Math.random() * 6.28
         ], [
-            .5, .5, .5
+            1, 1, 1
         ])
     }
 
     await scene.build()
 
-    const debug = initDebug(device, document.querySelector("#canvas"), scene)
+    /*const debug = initDebug(device, document.querySelector("#canvas"), scene)
 
     const t1 = Date.now()
     console.log(t1 - t0)
@@ -47,6 +47,8 @@ window.onload = async () => {
         console.log(tb - ta)
     }
 
+    return*/
+
     const pt = initPathTracer({ 
         device, scene,
         image: {
@@ -54,10 +56,38 @@ window.onload = async () => {
         },
         camera: {
             lookAt: [0, 0, 0],
-            position: [10, 10, 10],
+            position: [7, 7, 7],
             fov: 60
         }
     })
 
-    pt.step()
+    const display = initDisplay({
+        device, 
+        canvas: document.querySelector("#canvas"),
+        image: {
+            buffer: pt.getImageBuffer(),
+            width: 1000,
+            height: 1000
+        }
+    })
+
+    async function frame() {
+        for (var i = 0; i < 1; i++) {
+            await pt.step()
+        }
+
+        await display.draw()
+
+        console.log("hello")
+
+        window.requestAnimationFrame(frame)
+    }
+
+    frame()
+
+    /*for (var x = 0; x < 1000; x++) {
+        await pt.step()
+    }
+
+    display.draw()*/
 }

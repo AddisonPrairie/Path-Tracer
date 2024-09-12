@@ -150,47 +150,51 @@ function initScene(device) {
         return sceneBindGroupInfo
     }
 
-    function getHitInfoCode(sceneBufferGroupIndex) {
+    function getHitInfoCode(sceneBufferGroupIndex, noDuplicate) {
         return /* wgsl */ `
-        struct BVHNode {
-            aabb_l_min : vec3f,
-            l_child :   i32,
-            aabb_l_max : vec3f,
+
+        ${
+            noDuplicate ?  "" : 
+            /* wgsl */ `struct BVHNode {
+                aabb_l_min : vec3f,
+                l_child :   i32,
+                aabb_l_max : vec3f,
                 f_1 :   i32,
-            aabb_r_min : vec3f,
-            r_child :   i32,
-            aabb_r_max : vec3f,
+                aabb_r_min : vec3f,
+                r_child :   i32,
+                aabb_r_max : vec3f,
                 f_2 :   i32
-        };
+            };
 
-        // additional information is stored in the bottom row of the matrices
-        struct Object {
-            localToWorld_r_0 : vec4f,
-            localToWorld_r_1 : vec4f,
-            localToWorld_r_2 : vec4f,
-                  bvh_offset :   i32,
-                         f_1 :   i32,
-                         f_2 :   i32,
-                         f_3 :   i32,
-            worldToLocal_r_0 : vec4f,
-            worldToLocal_r_1 : vec4f,
-            worldToLocal_r_2 : vec4f,
-                         f_4 :   i32,
-                         f_5 :   i32,
-                         f_6 :   i32,
-                         f_7 :   i32,
-        };
+            // additional information is stored in the bottom row of the matrices
+            struct Object {
+                localToWorld_r_0 : vec4f,
+                localToWorld_r_1 : vec4f,
+                localToWorld_r_2 : vec4f,
+                    bvh_offset :   i32,
+                            f_1 :   i32,
+                            f_2 :   i32,
+                            f_3 :   i32,
+                worldToLocal_r_0 : vec4f,
+                worldToLocal_r_1 : vec4f,
+                worldToLocal_r_2 : vec4f,
+                            f_4 :   i32,
+                            f_5 :   i32,
+                            f_6 :   i32,
+                            f_7 :   i32,
+            };
 
-        struct Triangle {
-            v0 : vec3f,
-            v1 : vec3f,
-            v2 : vec3f
-        };
+            struct Triangle {
+                v0 : vec3f,
+                v1 : vec3f,
+                v2 : vec3f
+            };
 
-        @group(${sceneBufferGroupIndex}) @binding(0) var<storage, read_write>    tlas_bvh : array<BVHNode>;
-        @group(${sceneBufferGroupIndex}) @binding(1) var<storage, read_write>     objects : array<Object>;
-        @group(${sceneBufferGroupIndex}) @binding(2) var<storage, read_write>    mesh_bvh : array<BVHNode>;
-        @group(${sceneBufferGroupIndex}) @binding(3) var<storage, read_write>   mesh_tris : array<Triangle>;
+            @group(${sceneBufferGroupIndex}) @binding(0) var<storage, read_write>    tlas_bvh : array<BVHNode>;
+            @group(${sceneBufferGroupIndex}) @binding(1) var<storage, read_write>     objects : array<Object>;
+            @group(${sceneBufferGroupIndex}) @binding(2) var<storage, read_write>    mesh_bvh : array<BVHNode>;
+            @group(${sceneBufferGroupIndex}) @binding(3) var<storage, read_write>   mesh_tris : array<Triangle>;
+        `}
 
         struct TriangleHitInfo {
             normal : vec3f,

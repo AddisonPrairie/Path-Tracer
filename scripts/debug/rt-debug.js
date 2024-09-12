@@ -67,7 +67,7 @@ function initDebug(device, canvas, scene) {
     })
 
     const COMPUTE_SM = device.createShaderModule({
-        code: CS + scene.kernels.getNearestHitCode(1)
+        code: CS + scene.kernels.getNearestHitCode(1) + scene.kernels.getHitInfoCode(1, true)
     })
 
     const COMPUTE_PIPELINE = device.createComputePipeline({
@@ -157,12 +157,15 @@ function initDebug(device, canvas, scene) {
 
             var res : BVHHitResult = intersect_bvh(o, d);
 
+            var hit_info : TriangleHitInfo = get_triangle_hit_info(o, d, res.hit_obj, res.hit_tri);
+
             var col : vec3f = vec3f(0.f);
 
             if (res.hit_dis > 1e5f) {
                 col = vec3f(0.f);
             } else {
-                col = vec3f(f32(res.hit_obj) / 20.f, f32(res.hit_tri) / 5000.f, 0.f);
+                col = (hit_info.normal);
+                //col = vec3f(f32(res.hit_obj) / 20.f, f32(res.hit_tri) / 5000.f, 0.f);
             }
 
             image_buffer[img_idx] = vec4f(

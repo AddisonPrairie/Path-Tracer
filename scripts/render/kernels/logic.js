@@ -69,7 +69,7 @@ function initLogicKernel(params) {
             } else {
                 if (uniforms.first_sample > 0) {
                     // special case if this is the first execution of this kernel
-                    path_state.random_seed[path_idx] = f32(baseHash(vec2u(u32(path_idx)))) / f32(0xffffffffu) + .008;
+                    path_state.random_seed[path_idx] = f32(baseHash(vec2u(u32(path_idx), u32(path_idx + 1)))) / f32(0xffffffffu) + .008;
                     path_state.path_throughput[path_idx] = vec3f(1.f);
 
                     // NOTE: change this later
@@ -87,13 +87,16 @@ function initLogicKernel(params) {
                     var b_hit : bool = path_state.hit_obj[path_idx] >= 0;
                     var b_new_path : bool = false;
 
-                    if (b_hit) {
+                    var material_flags : u32 = path_state.material_flags[path_idx];
+
+
+                    if ((material_flags & 1u) != 0u) {
+                        // then a material hit occurred
                         path_throughput *= path_state.material_throughput_pdf[path_idx].xyz;
 
-                        // perform Russian Roulette
                         if (num_bounces > 3) {
                             var r2 : vec2f = rand2(path_state.random_seed[path_idx]);
-                            path_state.random_seed[path_idx] += 1.f;
+                            path_state.random_seed[path_idx] += 2.f;
 
                             var q : f32 = min(max(.1, 1. - path_throughput.y), .7);
                             if (r2.x < q) {
@@ -102,8 +105,14 @@ function initLogicKernel(params) {
                                 path_throughput = path_throughput / (1.f - q);
                             }
                         }
-                    } else {
-                        path_contribution += vec4f(8.f * path_throughput, 0.f);
+                    }
+
+                    if (num_bounces > 20) {
+                        path_throughput = vec3f(0.f);
+                    }
+
+                    if (!b_hit) {
+                        path_contribution += vec4f(2.f * path_throughput, 0.f);
                         path_throughput = vec3f(0.f);
                     }
 
@@ -113,14 +122,28 @@ function initLogicKernel(params) {
 
                         var l_idx : i32 = atomicAdd(&wg_stage_2_queue_size[0], 1);
                         wg_camera_queue[l_idx] = path_idx;
+
+                        num_bounces = 0;
+
+                        path_throughput = vec3f(1.f);
                     } else {
                         var l_idx : i32 = atomicAdd(&wg_stage_2_queue_size[1], 1);
                         wg_material_queue[l_idx] = path_idx;
+
+                        num_bounces += 1;
                     }
+
+                    path_state.path_throughput[path_idx] = path_throughput;
+                    path_state.num_bounces[path_idx] = num_bounces;
+                    path_state.material_flags[path_idx] = 0u;
 
                     if (any(path_contribution != vec4f(0.f))) {
                         image[path_state.pixel_index[path_idx]] += path_contribution;
-                    } 
+                    }
+
+                    //image[path_state.pixel_index[path_idx]] = vec4f(abs(path_state.path_d[path_idx]), 1.f);
+
+                    //image[path_state.pixel_index[path_idx]] = vec4f(abs(path_state.path_d[path_idx].xyz), 1.f);
                 }
             }
 
@@ -143,7 +166,7 @@ function initLogicKernel(params) {
                 if (num_material_writes > 0) {
                     var offset : i32 = atomicAdd(&queues.stage_2_queue_size[1], num_material_writes);
 
-                    for (var x = 0; x < num_camera_writes; x++) {
+                    for (var x = 0; x < num_material_writes; x++) {
                         queues.material_queue[offset + x] = wg_material_queue[x];
                     }
                 }

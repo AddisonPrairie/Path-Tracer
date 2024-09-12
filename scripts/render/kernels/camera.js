@@ -46,6 +46,14 @@ function initCameraKernel(params) {
 
         @group(1) @binding(0) var<storage, read_write> queues : QueuesStage2;
 
+        const Pi      = 3.14159265358979323846;
+        const InvPi   = 0.31830988618379067154;
+        const Inv2Pi  = 0.15915494309189533577;
+        const Inv4Pi  = 0.07957747154594766788;
+        const PiOver2 = 1.57079632679489661923;
+        const PiOver4 = 0.78539816339744830961;
+        const Sqrt2   = 1.41421356237309504880;
+
         /*@group(1) @binding(0) var<storage, read_write> stage_2_queue_size : array<i32>;
         @group(1) @binding(1) var<storage, read_write> camera_queue : array<i32>;
         @group(1) @binding(2) var<storage, read_write> material_queue : array<i32>;
@@ -64,7 +72,8 @@ function initCameraKernel(params) {
                 // compute camera ray
                 var path_idx : i32 = queues.camera_queue[queue_idx];
                 var pixel_idx : i32 = path_state.pixel_index[path_idx];
-                var coord : vec2f = vec2f(vec2i(pixel_idx % uniforms.image_size.x, pixel_idx / uniforms.image_size.x));
+                var coord : vec2f = vec2f(vec2i(pixel_idx % uniforms.image_size.x, pixel_idx / uniforms.image_size.x)) + rand2(path_state.random_seed[path_idx]);
+                path_state.random_seed[path_idx] += 2.f;
 
                 var o : vec3f;
                 var d : vec3f;
@@ -82,11 +91,13 @@ function initCameraKernel(params) {
 
             // if this is the first thread in the work group, copy local ray trace queue to global memory
             if (local_id.x == 0u) {
-                var offset : i32 = atomicAdd(&queues.stage_3_queue_size[0], ${WG_SIZE});
-
                 var num_writes = atomicLoad(&wg_stage_3_queue_size);
-                for (var x = 0; x < num_writes; x++) {
-                    queues.ray_trace_queue[offset + x] = wg_ray_trace_queue[x];
+
+                if (num_writes > 0) {
+                    var offset : i32 = atomicAdd(&queues.stage_3_queue_size[0], num_writes);
+                    for (var x = 0; x < num_writes; x++) {
+                        queues.ray_trace_queue[offset + x] = wg_ray_trace_queue[x];
+                    }
                 }
             }
         }
@@ -99,9 +110,9 @@ function initCameraKernel(params) {
             var camera_aspect_ratio : f32 = f32(uniforms.image_size.x) / f32(uniforms.image_size.y);
 
             var local : vec3f = vec3f(
-                camera_aspect_ratio * sspace.x * sin(uniforms.camera_fov),
+                camera_aspect_ratio * sspace.x * sin(uniforms.camera_fov * Pi / 180.f),
                 1.f,
-                sspace.y * sin(uniforms.camera_fov)
+                sspace.y * sin(uniforms.camera_fov * Pi / 180.f)
             );
 
             var forward : vec3f = normalize(uniforms.camera_look_at - uniforms.camera_position);
@@ -114,6 +125,17 @@ function initCameraKernel(params) {
 
         fn toWorld(v_x : vec3f, v_y : vec3f, v_z : vec3f, w : vec3f) -> vec3f {
             return v_x * w.x + v_y * w.y + v_z * w.z;
+        }
+        
+        fn baseHash(p : vec2u) -> u32 {
+            var p2 : vec2u = 1103515245u*((p >> vec2u(1u))^(p.yx));
+            var h32 : u32 = 1103515245u*((p2.x)^(p2.y>>3u));
+            return h32^(h32 >> 16u);
+        }
+        fn rand2(seed : f32) -> vec2f {
+            var n : u32 = baseHash(bitcast<vec2u>(vec2f(seed + 1., seed + 2.)));
+            var rz : vec2u = vec2u(n, n * 48271u);
+            return vec2f(rz.xy & vec2u(0x7fffffffu))/f32(0x7fffffff);
         }`
     }
 }

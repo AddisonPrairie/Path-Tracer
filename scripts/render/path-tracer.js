@@ -2,7 +2,9 @@ function initPathTracer(params) {
     const device = params.device
 
     const NUM_PATHS = 1_000_000
-    const BYTES_PER_PATH = 108
+    const BYTES_PER_PATH = 112
+
+    const DEBUG_MODE = true
 
 
     const bindGroups = {}
@@ -37,13 +39,87 @@ function initPathTracer(params) {
         sharedStructCode: SHARED_STRUCTS_CODE()
     })
 
-    return { step }
+    let renderInfo = { numSteps: 0 }
 
-    function step() {
+    return { step, getImageBuffer }
+
+    async function step() {
+
+        if (renderInfo.numSteps < 2) { 
+            // write to the uniform buffer
+
+            const uniformBuffer = new ArrayBuffer(64)
+            const dataView = new DataView(uniformBuffer)
+
+            dataView.setInt32( 0, params.image.width,  true)
+            dataView.setInt32( 4, params.image.height, true)
+
+            dataView.setInt32( 8, renderInfo.numSteps == 0 ? 1 : 0, true)
+
+            dataView.setFloat32(12, params.camera.fov, true)
+
+            dataView.setFloat32(16, params.camera.position[0], true)
+            dataView.setFloat32(20, params.camera.position[1], true)
+            dataView.setFloat32(24, params.camera.position[2], true)
+
+            dataView.setFloat32(32, params.camera.lookAt[0], true)
+            dataView.setFloat32(36, params.camera.lookAt[1], true)
+            dataView.setFloat32(40, params.camera.lookAt[2], true)
+
+            device.queue.writeBuffer(buffers.uniforms, 0, uniformBuffer, 0)
+        }
+
+        { // clear out the queue counts from last step
+            if (renderInfo.numSteps > 0) {
+                device.queue.writeBuffer(buffers.queues, 0, new Int32Array([0, 0, 0]), 0)
+            }
+        }
+
         logicKernel.execute()
         cameraKernel.execute()
         materialKernel.execute()
         rayTraceKernel.execute()
+
+        /*console.log(
+            new Int32Array(
+                await readBackBuffer(device, buffers.queues)
+            )
+        )*/
+
+        //console.log("reading back path state:")
+
+        /*const psBuffer = await readBackBuffer(device, buffers.pathState)
+
+        const pixelIndexView = new Int32Array(psBuffer, 0, 1_000_000)
+        const bouncesView = new Int32Array(psBuffer, 4_000_000, 1_000_000)
+        const randomSeedView = new Float32Array(psBuffer, 8_000_000, 1_000_000)
+
+        const pathThroughputView = new Float32Array(psBuffer, 12_000_000, 4_000_000)
+        const materialThroughputView = new Float32Array(psBuffer, 28_000_000, 4_000_000)
+
+        const pathOView = new Float32Array(psBuffer, 44_000_000, 4_000_000)
+        const pathDView = new Float32Array(psBuffer, 60_000_000, 4_000_000)
+
+        const hitObjView = new Int32Array(psBuffer, 76_000_000, 1_000_000)
+        const hitTriView = new Int32Array(psBuffer, 80_000_000, 1_000_000)
+        
+        /*console.log("pixel index: ", pixelIndexView)
+        console.log("bounces: ", bouncesView)
+        console.log("random seed: ", randomSeedView)
+        console.log("throughput: ", pathThroughputView)
+        console.log("material: ", materialThroughputView)
+        console.log("path position: ", pathOView)
+        console.log("path direction: ", pathDView)
+        console.log("hit object: ", hitObjView)
+        console.log("hit triangle: ", hitTriView)*/
+
+        //console.log("path direction: ", pathDView)
+
+        renderInfo.numSteps++
+    }
+
+    function getImageBuffer() {
+        return buffers.image
     }
 
     function SHARED_STRUCTS_CODE() {
@@ -63,6 +139,8 @@ function initPathTracer(params) {
 
             hit_obj : array<i32, ${NUM_PATHS}>, // 16 bytes
             hit_tri : array<i32, ${NUM_PATHS}>, // 16 bytes
+
+            material_flags : array<u32, ${NUM_PATHS}>, // 4 bytes
         };
         
         struct Uniforms {
@@ -81,8 +159,8 @@ function initPathTracer(params) {
             stage_3_queue_size : array<atomic<i32>, 1>,
             f_0 : i32,
 
-            material_queue : array<i32, ${NUM_PATHS}>,
             camera_queue   : array<i32, ${NUM_PATHS}>,
+            material_queue : array<i32, ${NUM_PATHS}>,
 
             ray_trace_queue : array<i32, ${NUM_PATHS}>,
         };
@@ -92,8 +170,8 @@ function initPathTracer(params) {
             stage_3_queue_size : array<atomic<i32>, 1>,
             f_0 : i32,
 
-            material_queue : array<i32, ${NUM_PATHS}>,
             camera_queue   : array<i32, ${NUM_PATHS}>,
+            material_queue : array<i32, ${NUM_PATHS}>,
 
             ray_trace_queue : array<i32, ${NUM_PATHS}>,
         };
@@ -103,12 +181,11 @@ function initPathTracer(params) {
             stage_3_queue_size : array<i32, 1>,
             f_0 : i32,
 
-            material_queue : array<i32, ${NUM_PATHS}>,
             camera_queue   : array<i32, ${NUM_PATHS}>,
+            material_queue : array<i32, ${NUM_PATHS}>,
 
             ray_trace_queue : array<i32, ${NUM_PATHS}>,
-        }
-        `
+        }`
     }
 
     function createBindGroups() {
@@ -175,6 +252,11 @@ function initPathTracer(params) {
                 usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
             })
 
+            buffers.pathState = device.createBuffer({
+                size: BYTES_PER_PATH * NUM_PATHS,
+                usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | (DEBUG_MODE ? GPUBufferUsage.COPY_SRC : 0)
+            })
+
             bindGroups.pathState = device.createBindGroup({
                 layout: bindGroupLayouts.pathState,
                 entries: [
@@ -182,10 +264,7 @@ function initPathTracer(params) {
                         binding: 0,
                         visibility: GPUShaderStage.COMPUTE,
                         resource: {
-                            buffer: device.createBuffer({
-                                size: BYTES_PER_PATH * NUM_PATHS,
-                                usage: GPUBufferUsage.STORAGE
-                            })
+                            buffer: buffers.pathState
                         }
                     },
                     {
@@ -202,7 +281,7 @@ function initPathTracer(params) {
         {// create bind group info for queues
             buffers.queues = device.createBuffer({
                 size: 16 + NUM_PATHS * 12,
-                usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+                usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | (DEBUG_MODE ? GPUBufferUsage.COPY_SRC : 0)
             })
 
             bindGroupLayouts.queues = device.createBindGroupLayout({
@@ -381,4 +460,19 @@ function initPathTracer(params) {
             })*/
         }
     }
+}
+
+async function readBackBuffer(device, buffer) {
+    const readBuffer = device.createBuffer({
+        size: buffer.size,
+        usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST
+    })
+    const CE = device.createCommandEncoder()
+    CE.copyBufferToBuffer(buffer, 0, readBuffer, 0, buffer.size)
+    device.queue.submit([CE.finish()])
+    await readBuffer.mapAsync(GPUMapMode.READ)
+    const ret = new ArrayBuffer(buffer.size)
+    new Int32Array(ret).set(new Int32Array(readBuffer.getMappedRange()))
+    readBuffer.destroy()
+    return ret
 }
