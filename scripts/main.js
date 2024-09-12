@@ -64,7 +64,10 @@ window.onload = async () => {
         if (maxCount++ > 1_000) return
 
         for (var i = 0; i < 1; i++) {
+            const ta = Date.now()
             await pt.step()
+            const tb = Date.now()
+            console.log(tb - ta)
         }
 
         await display.draw()

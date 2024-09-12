@@ -69,8 +69,7 @@ function initMaterialKernel(params) {
             } else {
                 var path_idx : i32 = queues.material_queue[queue_idx];
 
-                // the first bit being set means we processed a material hit
-                var material_flags : u32 = 1u;
+                var flags : u32 = 1u;
 
                 var o : vec3f = path_state.path_o[path_idx];
                 var d : vec3f = path_state.path_d[path_idx];
@@ -98,7 +97,7 @@ function initMaterialKernel(params) {
                 d = to_world(o1, o2, hit_info.normal, wi);
 
                 path_state.material_throughput_pdf[path_idx] = vec4f(brdf, pdf);
-                path_state.material_flags[path_idx] = material_flags;
+                path_state.flags[path_idx] |= flags;
                 path_state.random_seed[path_idx] = random_seed;
                 path_state.path_o[path_idx] = hit_pos + hit_info.normal * .0001;
                 path_state.path_d[path_idx] = d;

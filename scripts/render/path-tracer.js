@@ -1,7 +1,7 @@
 function initPathTracer(params) {
     const device = params.device
 
-    const NUM_PATHS = 1_000_000
+    const NUM_PATHS = params.image.width * params.image.height//1_000_000
     const BYTES_PER_PATH = 112
 
     const DEBUG_MODE = true
@@ -74,11 +74,36 @@ function initPathTracer(params) {
                 device.queue.writeBuffer(buffers.queues, 0, new Int32Array([0, 0, 0]), 0)
             }
         }
+        console.log("-------")
+        {
+            const ta = Date.now()
+            await logicKernel.execute()
+            const tb = Date.now()
 
-        logicKernel.execute()
-        cameraKernel.execute()
-        materialKernel.execute()
-        rayTraceKernel.execute()
+            console.log("logic ", tb - ta)
+        }
+        {
+            const ta = Date.now()
+            await cameraKernel.execute()
+            const tb = Date.now()
+
+            console.log("camera ", tb - ta)
+        }
+        {
+            const ta = Date.now()
+            await materialKernel.execute()
+            const tb = Date.now()
+
+            console.log("material ", tb - ta)
+        }
+        {
+            const ta = Date.now()
+            await rayTraceKernel.execute()
+            const tb = Date.now()
+
+            console.log("ray trace ", tb - ta)
+        }
+        console.log("-------")
 
         renderInfo.numSteps++
     }
@@ -105,7 +130,14 @@ function initPathTracer(params) {
             hit_obj : array<i32, ${NUM_PATHS}>, // 16 bytes
             hit_tri : array<i32, ${NUM_PATHS}>, // 16 bytes
 
-            material_flags : array<u32, ${NUM_PATHS}>, // 4 bytes
+            flags : array<u32, ${NUM_PATHS}>, // 4 bytes
+
+            // Description of flags:
+
+            /* 
+             * 1 <<  0 : material evaluation
+             * 1 <<  1 : 
+             */
         };
         
         struct Uniforms {
