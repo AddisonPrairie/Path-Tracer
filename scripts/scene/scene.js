@@ -380,6 +380,7 @@ function initScene(device) {
                         if (dist > 0.f && dist < hit_dist) {
                             hit_dist = dist;
                             hit_tri = -(node_idx + 1);
+                            hit_obj = obj_idx;
                         }
                         stack_ptr -= 1;
                         node_idx = stack[stack_ptr];

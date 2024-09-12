@@ -155,13 +155,14 @@ function initDebug(device, canvas, scene) {
 
             getCameraRay(vec2f(coord), &o, &d);
 
-            var res : f32 = intersect_bvh(o, d).hit_dis;
+            var res : BVHHitResult = intersect_bvh(o, d);
+
             var col : vec3f = vec3f(0.f);
 
-            if (res > 1e5f) {
+            if (res.hit_dis > 1e5f) {
                 col = vec3f(0.f);
             } else {
-                col = vec3f(res / 30.);
+                col = vec3f(f32(res.hit_obj) / 20.f, f32(res.hit_tri) / 5000.f, 0.f);
             }
 
             image_buffer[img_idx] = vec4f(
