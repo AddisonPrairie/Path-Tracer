@@ -20,30 +20,32 @@ window.onload = async () => {
     scene.registerMesh({ file: cowFile })
     scene.registerMesh({ file: bunnyFile })
     scene.registerMesh({ file: buddhaFile })
+    scene.registerMesh({ file: floorFile })
     
-    for (var i = 0; i < 50; i++) {
-        scene.instanceMesh(Math.floor(0), [
-            6 * Math.random(),
-            6 * Math.random(),
-            6 * Math.random()
-        ], [
-            Math.random() * 6.28, Math.random() * 6.28, Math.random() * 6.28
-        ], [
-            .5, .5, .5
-        ])
+    for (var i = 0; i < 100; i++) {
+        scene.instanceMesh(2, 
+            [(i % 10) * 2, (Math.floor(i / 10)) * 2, 0],
+            [Math.PI / 2, 0, Math.random() * Math.PI * 2.],
+            [1, 1, 1], 1
+        )
     }
+
+    scene.instanceMesh(3, [10, 10, -1.3], [0, 0, 0], [5, 5, 5], 0)
 
     await scene.build()
 
     const pt = initPathTracer({ 
         device, scene,
         image: {
-            width: 1000, height: 1000
+            width: 2048, height: 2048
         },
         camera: {
-            lookAt: [0, 0, 0],
-            position: [10, 10, 10],
+            lookAt: [10, 10, 0],
+            position: [15, 15, 5],
             fov: 60
+        },
+        settings: {
+            samples: 128
         }
     })
 
@@ -52,26 +54,19 @@ window.onload = async () => {
         canvas: document.querySelector("#canvas"),
         image: {
             buffer: pt.getImageBuffer(),
-            width: 1000,
-            height: 1000
+            width: 2048, height: 2048
         }
     })
 
-    let maxCount = 0
-
     async function frame() {
-
-        if (maxCount++ > 1_000) return
-
         for (var i = 0; i < 1; i++) {
             const ta = Date.now()
             await pt.step()
             const tb = Date.now()
-            console.log(tb - ta)
+            //console.log(tb - ta)
         }
 
         await display.draw()
-
 
         window.requestAnimationFrame(frame)
     }

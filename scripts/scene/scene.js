@@ -279,7 +279,7 @@ function initScene(device) {
             localToWorld_r_1 : vec4f,
             localToWorld_r_2 : vec4f,
                   bvh_offset :   i32,
-                         f_1 :   i32,
+                    material :   i32,
                          f_2 :   i32,
                          f_3 :   i32,
             worldToLocal_r_0 : vec4f,
@@ -520,12 +520,12 @@ function initScene(device) {
         return meshes.length - 1
     }
 
-    function instanceMesh(meshID, position, rotation, scale) {
+    function instanceMesh(meshID, position, rotation, scale, material) {
         if (meshID >= meshes.length || meshID < 0) {
             console.warn(`ERROR in scene::instanceMesh: mesh with ID ${meshID} does not exist`)
             return
         }
-        objects.push({ type: "mesh", meshID, transform: { position, rotation, scale } })
+        objects.push({ type: "mesh", meshID, material, transform: { position, rotation, scale } })
     }
 
     function addSphere(position, radius) {

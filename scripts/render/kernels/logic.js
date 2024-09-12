@@ -3,6 +3,8 @@ function initLogicKernel(params) {
 
     const WG_SIZE = 64
 
+    const SAMPLES_PER_PIXEL_PER_PATH = 8
+
     const SM = device.createShaderModule({
         code: SRC(),
         label: "logic shader module"
@@ -55,23 +57,27 @@ function initLogicKernel(params) {
         var<workgroup> wg_camera_queue : array<i32, ${WG_SIZE}>;
         var<workgroup> wg_material_queue : array<i32, ${WG_SIZE}>;
 
+        var<workgroup> num_new_pixel_index : atomic<i32>;
+
         @compute @workgroup_size(${WG_SIZE})
         fn main(@builtin(global_invocation_id) global_id : vec3u, @builtin(local_invocation_id) local_id : vec3u) {
             var path_idx : i32 = i32(global_id.x);
 
             // check if this path needs to get a new pixel index
             var b_get_new_pixel_index : bool = false;
-            if (path_idx >= ${params.numPaths}) {
-                
+
+            var b_camera_queue   : bool = false;
+            var b_material_queue : bool = false;
+
+            if (path_idx >= ${params.numPaths} || (path_state.flags[path_idx] & (1u << 31u)) != 0u) {
+
             } else {
                 if (uniforms.first_sample > 0) {
                     // special case if this is the first execution of this kernel
                     path_state.random_seed[path_idx] = f32(baseHash(vec2u(u32(path_idx), u32(path_idx + 1)))) / f32(0xffffffffu) + .008;
                     path_state.path_throughput[path_idx] = vec3f(1.f);
 
-                    var l_idx : i32 = atomicAdd(&wg_stage_2_queue_size[0], 1);
-                    wg_camera_queue[l_idx] = path_idx;
-
+                    b_camera_queue = true;
                     b_get_new_pixel_index = true;
                 } else {
                     // otherwise, see if the path needs to be restarted or continued
@@ -84,7 +90,6 @@ function initLogicKernel(params) {
                     var b_new_path : bool = false;
 
                     var flags : u32 = path_state.flags[path_idx];
-
 
                     if ((flags & 1u) != 0u) {
                         // then a material hit occurred
@@ -116,17 +121,19 @@ function initLogicKernel(params) {
                     if (all(path_throughput == vec3f(0.f)))  {
                         path_contribution.w = 1.f;
 
-                        var l_idx : i32 = atomicAdd(&wg_stage_2_queue_size[0], 1);
-                        wg_camera_queue[l_idx] = path_idx;
+                        b_camera_queue = true;
 
                         num_bounces = 0;
                         path_throughput = vec3f(1.f);
 
-                        b_get_new_pixel_index = true;
-                    } else {
-                        var l_idx : i32 = atomicAdd(&wg_stage_2_queue_size[1], 1);
-                        wg_material_queue[l_idx] = path_idx;
+                        if (path_state.samples_in_pixel[path_idx] >= ${SAMPLES_PER_PIXEL_PER_PATH - 1}) {
+                            b_get_new_pixel_index = true;
+                        } else {
+                            path_state.samples_in_pixel[path_idx] += 1;
+                        }
 
+                    } else {
+                        b_material_queue = true;
                         num_bounces += 1;
                     }
 
@@ -144,9 +151,46 @@ function initLogicKernel(params) {
                 }
             }
 
-            // check
+            // coalesced operations for retrieving new pixel index
+            var new_pixel_index : i32 = 0;
             if (b_get_new_pixel_index) {
-                path_state.pixel_index[path_idx] = path_idx;
+                // each path needing a new index adds to the local workgroup count
+                new_pixel_index = atomicAdd(&num_new_pixel_index, 1);
+            }
+
+            workgroupBarrier();
+
+            if (local_id.x == 0u) {
+                // add the number of local paths to the global count,
+                var num : i32 = atomicLoad(&num_new_pixel_index);
+                if (num > 0) {
+                    // then store the global offset back to local storage
+                    atomicStore(&num_new_pixel_index, atomicAdd(&path_state.pixel_counter, num));
+                }
+            }
+
+            workgroupBarrier();
+
+            if (b_get_new_pixel_index) {
+                new_pixel_index += atomicLoad(&num_new_pixel_index);
+
+                if (new_pixel_index >= ${Math.ceil(params.imageWidth * params.imageHeight * params.samples / SAMPLES_PER_PIXEL_PER_PATH)}) {
+                    // if the image is done rendering, kill the path
+                    path_state.flags[path_idx] |= (1u << 31u);
+                } else {
+                    path_state.pixel_index[path_idx] = (new_pixel_index) % (uniforms.image_size.x * uniforms.image_size.y);
+                    path_state.samples_in_pixel[path_idx] = 0;
+                }
+            }
+
+            // coalesced operations for writing to local queues
+            if (b_camera_queue) {
+                var l_idx : i32 = atomicAdd(&wg_stage_2_queue_size[0], 1);
+                wg_camera_queue[l_idx] = path_idx;
+            }
+            if (b_material_queue) {
+                var l_idx : i32 = atomicAdd(&wg_stage_2_queue_size[1], 1);
+                wg_material_queue[l_idx] = path_idx;
             }
 
             workgroupBarrier();

@@ -1,8 +1,8 @@
 function initPathTracer(params) {
     const device = params.device
 
-    const NUM_PATHS = params.image.width * params.image.height//1_000_000
-    const BYTES_PER_PATH = 112
+    const NUM_PATHS = 1_000_000
+    const BYTES_PER_PATH = 116
 
     const DEBUG_MODE = true
 
@@ -16,6 +16,9 @@ function initPathTracer(params) {
     const logicKernel = initLogicKernel({
         bindGroups, bindGroupLayouts, device,
         numPaths: NUM_PATHS,
+        samples: params.settings.samples,
+        imageWidth: params.image.width,
+        imageHeight: params.image.height,
         sharedStructCode: SHARED_STRUCTS_CODE()
     })
 
@@ -74,36 +77,47 @@ function initPathTracer(params) {
                 device.queue.writeBuffer(buffers.queues, 0, new Int32Array([0, 0, 0]), 0)
             }
         }
-        console.log("-------")
+
+        const bLog = false
+
+        if (bLog) console.log("-------")
         {
             const ta = Date.now()
             await logicKernel.execute()
             const tb = Date.now()
 
-            console.log("logic ", tb - ta)
+            if (bLog) console.log("logic ", tb - ta)
         }
         {
             const ta = Date.now()
             await cameraKernel.execute()
             const tb = Date.now()
 
-            console.log("camera ", tb - ta)
+            if (bLog) console.log("camera ", tb - ta)
         }
         {
             const ta = Date.now()
             await materialKernel.execute()
             const tb = Date.now()
 
-            console.log("material ", tb - ta)
+            if (bLog) console.log("material ", tb - ta)
         }
         {
             const ta = Date.now()
             await rayTraceKernel.execute()
             const tb = Date.now()
 
-            console.log("ray trace ", tb - ta)
+            if (bLog) console.log("ray trace ", tb - ta)
         }
-        console.log("-------")
+        if (bLog) console.log("-------")
+
+        /*const queueInfo = await readBackBuffer(device, buffers.queues)
+
+        console.log(
+            "camera: ", (new Int32Array(queueInfo))[0],
+            "material: ", (new Int32Array(queueInfo))[1],
+            "ray trace: ", (new Int32Array(queueInfo))[2],
+        )*/
 
         renderInfo.numSteps++
     }
@@ -115,6 +129,9 @@ function initPathTracer(params) {
     function SHARED_STRUCTS_CODE() {
         return /* wgsl */ `
         struct PathState {
+            // consider moving this elsewhere later (WHEN DELETED, CHANGE BUFFER SIZE BELOW)
+            pixel_counter : atomic<i32>,
+
             pixel_index : array<i32, ${NUM_PATHS}>, // 4 bytes
             num_bounces : array<i32, ${NUM_PATHS}>, // 4 bytes
 
@@ -131,6 +148,8 @@ function initPathTracer(params) {
             hit_tri : array<i32, ${NUM_PATHS}>, // 16 bytes
 
             flags : array<u32, ${NUM_PATHS}>, // 4 bytes
+            
+            samples_in_pixel : array<i32, ${NUM_PATHS}>, // 4 bytes
 
             // Description of flags:
 
@@ -250,7 +269,8 @@ function initPathTracer(params) {
             })
 
             buffers.pathState = device.createBuffer({
-                size: BYTES_PER_PATH * NUM_PATHS,
+                // additional four bytes are because of pixel_counter
+                size: 4 + BYTES_PER_PATH * NUM_PATHS,
                 usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | (DEBUG_MODE ? GPUBufferUsage.COPY_SRC : 0)
             })
 

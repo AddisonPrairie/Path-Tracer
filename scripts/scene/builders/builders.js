@@ -57,8 +57,12 @@ function initBuilders(device) {
                 DV.setFloat32(128 * i + 104, objects[rearrangeOrder[i]].transformMatrices.worldToLocal[10], true)
                 DV.setFloat32(128 * i + 108, objects[rearrangeOrder[i]].transformMatrices.worldToLocal[14], true)
 
+                console.log(utilizedMeshOrder)
+                console.log(objects)
+
                 // additional info
-                DV.setInt32  (128 * i +  48, utilizedMeshOrder[objects[rearrangeOrder[i]].meshID].triangleOffset, true)
+                DV.setInt32(128 * i +  48, utilizedMeshOrder[objects[rearrangeOrder[i]].meshID].triangleOffset, true)
+                DV.setInt32(128 * i +  52, objects[rearrangeOrder[i]].material, true)
             }
         }
         
