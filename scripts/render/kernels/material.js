@@ -128,6 +128,11 @@ function initMaterialKernel(params) {
         }
 
         // noise functions
+        fn baseHash(p : vec2u) -> u32 {
+            var p2 : vec2u = 1103515245u*((p >> vec2u(1u))^(p.yx));
+            var h32 : u32 = 1103515245u*((p2.x)^(p2.y>>3u));
+            return h32^(h32 >> 16u);
+        }
         fn rand2(seed : f32) -> vec2f {
             var n : u32 = baseHash(bitcast<vec2u>(vec2f(seed + 1., seed + 2.)));
             var rz : vec2u = vec2u(n, n * 48271u);

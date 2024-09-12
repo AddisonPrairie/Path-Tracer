@@ -2,7 +2,7 @@ function initPathTracer(params) {
     const device = params.device
 
     const NUM_PATHS = 1_000_000
-    const BYTES_PER_PATH = 4
+    const BYTES_PER_PATH = 104
 
 
     const bindGroups = {}
@@ -11,6 +11,19 @@ function initPathTracer(params) {
 
     createBindGroups()
 
+    const cameraKernel = initCameraKernel({
+        bindGroups, bindGroupLayouts, device,
+        numPaths: NUM_PATHS,
+        sharedStructCode: SHARED_STRUCTS_CODE()
+    })
+
+    const materialKernel = initMaterialKernel({
+        bindGroups, bindGroupLayouts, device,
+        scene: params.scene,
+        numPaths: NUM_PATHS,
+        sharedStructCode: SHARED_STRUCTS_CODE()
+    })
+
     const rayTraceKernel = initRayTraceKernel({
         bindGroups, bindGroupLayouts, device,
         scene: params.scene,
@@ -18,34 +31,31 @@ function initPathTracer(params) {
         sharedStructCode: SHARED_STRUCTS_CODE()
     })
 
-    const cameraKernel = initCameraKernel({
-        bindGroups, bindGroupLayouts, device,
-        numPaths: NUM_PATHS,
-        sharedStructCode: SHARED_STRUCTS_CODE()
-    })
-
     function SHARED_STRUCTS_CODE() {
         return /* wgsl */ `
         struct PathState {
-            pixel_index : array<i32, ${params.numActivePaths}>,
-            num_bounces : array<i32, ${params.numActivePaths}>,
+            pixel_index : array<i32, ${params.numActivePaths}>, // 4 bytes
+            num_bounces : array<i32, ${params.numActivePaths}>, // 4 bytes
 
-            random_seed : array<f32, ${params.numActivePaths}>,
+            random_seed : array<f32, ${params.numActivePaths}>, // 4 bytes
 
-            path_throughput : array<vec3f, ${params.numActivePaths}>,
+            path_throughput : array<vec3f, ${params.numActivePaths}>, // 16 bytes
 
-            material_throughput_pdf : array<vec4f, ${params.numActivePaths}>,
+            material_throughput_pdf : array<vec4f, ${params.numActivePaths}>, // 16 bytes
 
-            path_o : array<vec3f, ${params.numActivePaths}>,
-            path_d : array<vec3f, ${params.numActivePaths}>,
+            path_o : array<vec3f, ${params.numActivePaths}>, // 16 bytes
+            path_d : array<vec3f, ${params.numActivePaths}>, // 16 bytes
 
-            hit_obj : array<i32, ${params.numActivePaths}>,
-            hit_tri : array<i32, ${params.numActivePaths}>
+            hit_obj : array<i32, ${params.numActivePaths}>, // 16 bytes
+            hit_tri : array<i32, ${params.numActivePaths}>, // 16 bytes
         };
         
         struct Uniforms {
             image_size : vec2i,
 
+            first_sample : i32, // != 0 iff this is the first time everything is executed
+            
+            camera_fov : f32,
             camera_position : vec3f,
             camera_look_at  : vec3f,
         };`

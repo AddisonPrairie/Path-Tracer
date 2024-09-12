@@ -94,8 +94,10 @@ function initCameraKernel(params) {
             sspace = sspace * 2.f - vec2f(1.f);
             sspace.y *= -1.f;
 
+            var camera_aspect_ratio : f32 = f32(uniforms.image_size.x) / f32(uniforms.image_size.y);
+
             var local : vec3f = vec3f(
-                uniforms.camera_aspect_ratio * sspace.x * sin(uniforms.camera_fov),
+                camera_aspect_ratio * sspace.x * sin(uniforms.camera_fov),
                 1.f,
                 sspace.y * sin(uniforms.camera_fov)
             );
