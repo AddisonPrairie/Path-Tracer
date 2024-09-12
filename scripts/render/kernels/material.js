@@ -61,6 +61,17 @@ function initMaterialKernel(params) {
         var<workgroup> wg_stage_3_queue_size : atomic<i32>;
         var<workgroup> wg_ray_trace_queue : array<i32, ${WG_SIZE}>;
 
+        fn lambert_diffuse_sample_f(
+            wo : vec3f, 
+            wi : ptr<function, vec3f>, 
+            seed : ptr<function, f32>, 
+            albedo : vec3f,
+            flags : ptr<function, u32>
+        ) -> vec4f {
+            *wi = cosineSampleHemisphere(rand2(*seed)); *seed += 2.f;
+            return vec4f(pow(albedo, vec3f(2.2)), (*wi).z);
+        }
+
         @compute @workgroup_size(${WG_SIZE})
         fn main(@builtin(global_invocation_id) global_id : vec3u, @builtin(local_invocation_id) local_id : vec3u) {
             var queue_idx : i32 = i32(global_id.x);
@@ -85,18 +96,23 @@ function initMaterialKernel(params) {
                 var o2 : vec3f = normalize(cross(o1, hit_info.normal));
 
                 var wo : vec3f = to_local(o1, o2, hit_info.normal, -d);
-
                 var random_seed : f32 = path_state.random_seed[path_idx];
 
-                var wi : vec3f = cosineSampleHemisphere(rand2(random_seed));
-                random_seed += 2.f;
+                var brdf_pdf : vec4f;
+                var wi : vec3f;
 
-                var brdf = vec3f(.2f);
-                var  pdf = 1.f;
+                var material_index : i32 = objects[hit_obj].material;
+
+                if (material_index == 0) {
+                    brdf_pdf = lambert_diffuse_sample_f(wo, &wi, &random_seed, vec3f(.5f), &flags);
+                }
+                if (material_index == 1) {
+                    brdf_pdf = lambert_diffuse_sample_f(wo, &wi, &random_seed, vec3f(.2f), &flags);
+                }
 
                 d = to_world(o1, o2, hit_info.normal, wi);
 
-                path_state.material_throughput_pdf[path_idx] = vec4f(brdf, pdf);
+                path_state.material_throughput_pdf[path_idx] = brdf_pdf;
                 path_state.flags[path_idx] |= flags;
                 path_state.random_seed[path_idx] = random_seed;
                 path_state.path_o[path_idx] = hit_pos + hit_info.normal * .0001;
