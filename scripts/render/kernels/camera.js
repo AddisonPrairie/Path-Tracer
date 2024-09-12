@@ -12,7 +12,7 @@ function initCameraKernel(params) {
         layout: device.createPipelineLayout({
             bindGroupLayouts: [
                 params.bindGroupLayouts.pathState, 
-                params.bindGroupLayouts.stage2Queues
+                params.bindGroupLayouts.queues
             ]
         }),
         compute: {
@@ -29,7 +29,7 @@ function initCameraKernel(params) {
 
         P.setPipeline(PIPELINE)
         P.setBindGroup(0, params.bindGroups.pathState)
-        P.setBindGroup(1, params.bindGroups.stage2Queues)
+        P.setBindGroup(1, params.bindGroups.queues)
         P.dispatchWorkgroups(Math.ceil(params.numPaths / WG_SIZE))
         P.end()
 
@@ -44,11 +44,13 @@ function initCameraKernel(params) {
         @group(0) @binding(0) var<storage, read_write> path_state : PathState;
         @group(0) @binding(1) var<uniform> uniforms : Uniforms;
 
-        @group(1) @binding(0) var<storage, read_write> stage_2_queue_size : array<i32>;
+        @group(1) @binding(0) var<storage, read_write> queues : QueuesStage2;
+
+        /*@group(1) @binding(0) var<storage, read_write> stage_2_queue_size : array<i32>;
         @group(1) @binding(1) var<storage, read_write> camera_queue : array<i32>;
         @group(1) @binding(2) var<storage, read_write> material_queue : array<i32>;
         @group(1) @binding(3) var<storage, read_write> stage_3_queue_size : atomic<i32>;
-        @group(1) @binding(4) var<storage, read_write> ray_trace_queue : i32;
+        @group(1) @binding(4) var<storage, read_write> ray_trace_queue : array<i32>;*/
 
         var<workgroup> wg_stage_3_queue_size : atomic<i32>;
         var<workgroup> wg_ray_trace_queue : array<i32, ${WG_SIZE}>;
@@ -56,11 +58,11 @@ function initCameraKernel(params) {
         @compute @workgroup_size(${WG_SIZE})
         fn main(@builtin(global_invocation_id) global_id : vec3u, @builtin(local_invocation_id) local_id : vec3u) {
             var queue_idx : i32 = i32(global_id.x);
-            if (queue_idx >= stage_2_queue_size[0]) {
+            if (queue_idx >= queues.stage_2_queue_size[0]) {
                 
             } else {
                 // compute camera ray
-                var path_idx : i32 = camera_queue[queue_idx];
+                var path_idx : i32 = queues.camera_queue[queue_idx];
                 var pixel_idx : i32 = path_state.pixel_index[path_idx];
                 var coord : vec2f = vec2f(vec2i(pixel_idx % uniforms.image_size.x, pixel_idx / uniforms.image_size.x));
 
@@ -80,11 +82,11 @@ function initCameraKernel(params) {
 
             // if this is the first thread in the work group, copy local ray trace queue to global memory
             if (local_id.x == 0u) {
-                var offset : i32 = atomicAdd(&stage_3_queue_size, ${WG_SIZE});
+                var offset : i32 = atomicAdd(&queues.stage_3_queue_size[0], ${WG_SIZE});
 
                 var num_writes = atomicLoad(&wg_stage_3_queue_size);
                 for (var x = 0; x < num_writes; x++) {
-                    ray_trace_queue[offset + x] = wg_ray_trace_queue[x];
+                    queues.ray_trace_queue[offset + x] = wg_ray_trace_queue[x];
                 }
             }
         }

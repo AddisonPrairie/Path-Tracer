@@ -12,7 +12,7 @@ function initLogicKernel(params) {
         layout: device.createPipelineLayout({
             bindGroupLayouts: [
                 params.bindGroupLayouts.pathState, 
-                params.bindGroupLayouts.stage2Queues,
+                params.bindGroupLayouts.queues,
                 params.bindGroupLayouts.image
             ]
         }),
@@ -30,7 +30,7 @@ function initLogicKernel(params) {
 
         P.setPipeline(PIPELINE)
         P.setBindGroup(0, params.bindGroups.pathState)
-        P.setBindGroup(1, params.bindGroups.stage2Queues)
+        P.setBindGroup(1, params.bindGroups.queues)
         P.setBindGroup(2, params.bindGroups.image)
         P.dispatchWorkgroups(Math.ceil(params.numPaths / WG_SIZE))
         P.end()
@@ -46,11 +46,13 @@ function initLogicKernel(params) {
         @group(0) @binding(0) var<storage, read_write> path_state : PathState;
         @group(0) @binding(1) var<uniform> uniforms : Uniforms;
 
-        @group(1) @binding(0) var<storage, read_write> stage_2_queue_size : array<atomic<i32>>;
+        @group(1) @binding(0) var<storage, read_write> queues : QueuesStage1;
+
+        /*@group(1) @binding(0) var<storage, read_write> stage_2_queue_size : array<atomic<i32>>;
         @group(1) @binding(1) var<storage, read_write> camera_queue : array<i32>;
         @group(1) @binding(2) var<storage, read_write> material_queue : array<i32>;
         @group(1) @binding(3) var<storage, read_write> stage_3_queue_size : atomic<i32>; // not used
-        @group(1) @binding(4) var<storage, read_write> ray_trace_queue : i32; // not used
+        @group(1) @binding(4) var<storage, read_write> ray_trace_queue : i32; // not used*/
 
         @group(2) @binding(0) var<storage, read_write> image : array<vec4f>;
 
@@ -67,13 +69,13 @@ function initLogicKernel(params) {
             } else {
                 if (uniforms.first_sample > 0) {
                     // special case if this is the first execution of this kernel
-                    path_state.random_seed[pixel_idx] = f32(baseHash(vec2u(path_idx))) / f32(0xffffffffu) + .008;
-                    path_state.path_throughput[pixel_idx] = vec3f(1.f);
+                    path_state.random_seed[path_idx] = f32(baseHash(vec2u(u32(path_idx)))) / f32(0xffffffffu) + .008;
+                    path_state.path_throughput[path_idx] = vec3f(1.f);
 
                     // NOTE: change this later
                     path_state.pixel_index[path_idx] = path_idx;
 
-                    var l_idx : i32 = atomicAdd(&wg_state_2_queue_size[0], 1);
+                    var l_idx : i32 = atomicAdd(&wg_stage_2_queue_size[0], 1);
                     wg_camera_queue[l_idx] = path_idx;
                 } else {
                     // otherwise, see if the path needs to be restarted or continued
@@ -117,7 +119,7 @@ function initLogicKernel(params) {
                     }
 
                     if (any(path_contribution != vec4f(0.f))) {
-                        image[path_state.pixel_index[path_index]] += path_contribution;
+                        image[path_state.pixel_index[path_idx]] += path_contribution;
                     } 
                 }
             }
@@ -131,18 +133,18 @@ function initLogicKernel(params) {
                 var num_material_writes : i32 = atomicLoad(&wg_stage_2_queue_size[1]);
 
                 if (num_camera_writes > 0) {
-                    var offset : i32 = atomicAdd(&stage_2_queue_size[0], num_camera_writes);
+                    var offset : i32 = atomicAdd(&queues.stage_2_queue_size[0], num_camera_writes);
 
                     for (var x = 0; x < num_camera_writes; x++) {
-                        camera_queue[offset + x] = wg_camera_queue[x];
+                        queues.camera_queue[offset + x] = wg_camera_queue[x];
                     }
                 }
 
                 if (num_material_writes > 0) {
-                    var offset : i32 = atomicAdd(&stage_2_queue_size[1], num_material_writes);
+                    var offset : i32 = atomicAdd(&queues.stage_2_queue_size[1], num_material_writes);
 
                     for (var x = 0; x < num_camera_writes; x++) {
-                        material_queue[offset + x] = wg_material_queue[x];
+                        queues.material_queue[offset + x] = wg_material_queue[x];
                     }
                 }
             }

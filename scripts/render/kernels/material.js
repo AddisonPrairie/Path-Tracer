@@ -12,7 +12,7 @@ function initMaterialKernel(params) {
         layout: device.createPipelineLayout({
             bindGroupLayouts: [
                 params.bindGroupLayouts.pathState, 
-                params.bindGroupLayouts.stage2Queues,
+                params.bindGroupLayouts.queues,
                 params.bindGroupLayouts.scene
             ]
         }),
@@ -30,7 +30,7 @@ function initMaterialKernel(params) {
 
         P.setPipeline(PIPELINE)
         P.setBindGroup(0, params.bindGroups.pathState)
-        P.setBindGroup(1, params.bindGroups.stage2Queues)
+        P.setBindGroup(1, params.bindGroups.queues)
         P.setBindGroup(2, params.bindGroups.scene)
         P.dispatchWorkgroups(Math.ceil(params.numPaths / WG_SIZE))
         P.end()
@@ -46,13 +46,23 @@ function initMaterialKernel(params) {
         @group(0) @binding(0) var<storage, read_write> path_state : PathState;
         @group(0) @binding(1) var<uniform> uniforms : Uniforms;
 
-        @group(1) @binding(0) var<storage, read_write> stage_2_queue_size : array<i32>;
+        @group(1) @binding(0) var<storage, read_write> queues : QueuesStage2;
+
+        /*@group(1) @binding(0) var<storage, read_write> stage_2_queue_size : array<i32>;
         @group(1) @binding(1) var<storage, read_write> camera_queue : array<i32>;
         @group(1) @binding(2) var<storage, read_write> material_queue : array<i32>;
         @group(1) @binding(3) var<storage, read_write> stage_3_queue_size : atomic<i32>;
-        @group(1) @binding(4) var<storage, read_write> ray_trace_queue : i32;
+        @group(1) @binding(4) var<storage, read_write> ray_trace_queue : array<i32>;*/
 
         ${params.scene.kernels.getHitInfoCode(2)}
+
+        const Pi      = 3.14159265358979323846;
+        const InvPi   = 0.31830988618379067154;
+        const Inv2Pi  = 0.15915494309189533577;
+        const Inv4Pi  = 0.07957747154594766788;
+        const PiOver2 = 1.57079632679489661923;
+        const PiOver4 = 0.78539816339744830961;
+        const Sqrt2   = 1.41421356237309504880;
 
         var<workgroup> wg_stage_3_queue_size : atomic<i32>;
         var<workgroup> wg_ray_trace_queue : array<i32, ${WG_SIZE}>;
@@ -60,11 +70,11 @@ function initMaterialKernel(params) {
         @compute @workgroup_size(${WG_SIZE})
         fn main(@builtin(global_invocation_id) global_id : vec3u, @builtin(local_invocation_id) local_id : vec3u) {
             var queue_idx : i32 = i32(global_id.x);
-            if (queue_idx >= stage_2_queue_size[0]) {
+            if (queue_idx >= queues.stage_2_queue_size[0]) {
                 
             } else {
                 // compute camera ray
-                var path_idx : i32 = camera_queue[queue_idx];
+                var path_idx : i32 = queues.camera_queue[queue_idx];
 
                 var o : vec3f = path_state.path_o[path_idx];
                 var d : vec3f = path_state.path_d[path_idx];
@@ -77,7 +87,7 @@ function initMaterialKernel(params) {
                 var hit_pos = o + d * hit_info.dist;
 
                 var o1 : vec3f = normalize(ortho(hit_info.normal));
-                var o2 : vec3f = normalize(cross(o1, res.norm));
+                var o2 : vec3f = normalize(cross(o1, hit_info.normal));
 
                 var wo : vec3f = to_local(o1, o2, hit_info.normal, -d);
 
@@ -89,8 +99,7 @@ function initMaterialKernel(params) {
                 var brdf = vec3f(.2);
                 var  pdf = 1.f;
 
-                d = toWorld(o1, o2, hit_info.normal, wi);
-
+                d = to_world(o1, o2, hit_info.normal, wi);
 
                 path_state.material_throughput_pdf[path_idx] = vec4f(brdf, pdf);
                 path_state.random_seed[path_idx] = random_seed;
@@ -105,11 +114,11 @@ function initMaterialKernel(params) {
 
             // if this is the first thread in the work group, copy local ray trace queue to global memory
             if (local_id.x == 0u) {
-                var offset : i32 = atomicAdd(&stage_3_queue_size, ${WG_SIZE});
-
                 var num_writes = atomicLoad(&wg_stage_3_queue_size);
+
+                var offset : i32 = atomicAdd(&queues.stage_3_queue_size[0], num_writes);
                 for (var x = 0; x < num_writes; x++) {
-                    ray_trace_queue[offset + x] = wg_ray_trace_queue[x];
+                    queues.ray_trace_queue[offset + x] = wg_ray_trace_queue[x];
                 }
             }
         }

@@ -47,5 +47,17 @@ window.onload = async () => {
         console.log(tb - ta)
     }
 
-    const pt = initPathTracer({ device, scene })
+    const pt = initPathTracer({ 
+        device, scene,
+        image: {
+            width: 1000, height: 1000
+        },
+        camera: {
+            lookAt: [0, 0, 0],
+            position: [10, 10, 10],
+            fov: 60
+        }
+    })
+
+    pt.step()
 }

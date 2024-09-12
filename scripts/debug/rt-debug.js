@@ -6,11 +6,11 @@ function initDebug(device, canvas, scene) {
     let r2   = .6
     let dist = 10
 
-    let lookAt = [3, 3, 3]
-    let position = [
-        lookAt[0] + Math.cos(r1) * Math.cos(r2) * dist,
-        lookAt[1] + Math.sin(r1) * Math.cos(r2) * dist,
-        lookAt[2] + Math.sin(r2) * dist
+    let lookAt = [0, 0, 0]
+    let position = [ 10, 10, 10
+        //lookAt[0] + Math.cos(r1) * Math.cos(r2) * dist,
+        //lookAt[1] + Math.sin(r1) * Math.cos(r2) * dist,
+        //lookAt[2] + Math.sin(r2) * dist
     ]
 
     const { VS, FS, CS } = SRC()
@@ -155,7 +155,7 @@ function initDebug(device, canvas, scene) {
 
             getCameraRay(vec2f(coord), &o, &d);
 
-            var res : f32 = intersect_bvh(o, d);
+            var res : f32 = intersect_bvh(o, d).hit_dis;
             var col : vec3f = vec3f(0.f);
 
             if (res > 1e5f) {

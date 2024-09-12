@@ -198,7 +198,7 @@ function initScene(device) {
         };
 
         fn get_triangle_hit_info(o : vec3f, d : vec3f, hit_obj : i32, hit_tri : i32) -> TriangleHitInfo {
-            var obj : Object = objects[obj_idx];
+            var obj : Object = objects[hit_obj];
 
             // transform the ray position & direction
             var world_to_local : mat4x4f = mat4x4f(
@@ -223,12 +223,13 @@ function initScene(device) {
             );
 
             var world_hit_pos  : vec3f = (local_to_world * vec4f(local_hit_pos, 1.f)).xyz;
-            var world_hit_norm : vec3f = (local_to_world * vec4f(local_hit_info.norm, 0.f)).xyz;
+            var world_hit_norm : vec3f = (local_to_world * vec4f(local_hit_info.normal, 0.f)).xyz;
 
-            return {
-                normalize(world_hit_norm),
-                length(world_hit_pos - o)
-            };
+            var returned : TriangleHitInfo;
+            returned.normal = normalize(world_hit_norm);
+            returned.dist   = length(world_hit_pos - o);
+
+            return returned;
         }
         
         fn helper_intersect_triangle(o : vec3f, d : vec3f, tri : Triangle) -> TriangleHitInfo {
@@ -299,12 +300,19 @@ function initScene(device) {
 
         var<private> stack : array<i32, 32>;
 
-        fn intersect_bvh(o_in : vec3f, d_in : vec3f) -> f32 {
+        struct BVHHitResult {
+            hit_obj : i32,
+            hit_tri : i32,
+            hit_dis : f32
+        };
+
+        fn intersect_bvh(o_in : vec3f, d_in : vec3f) -> BVHHitResult {
             var o : vec3f = o_in;
             var d : vec3f = d_in;
 
             var hit_dist : f32 = 1e6f;
             var hit_obj  : i32 = -1;
+            var hit_tri  : i32 = -1;
             
             var stack_ptr : i32 =  0;
             var  node_idx : i32 =  0;
@@ -371,6 +379,7 @@ function initScene(device) {
                         var dist :      f32 = helper_tri_intersect(o, d, tr);
                         if (dist > 0.f && dist < hit_dist) {
                             hit_dist = dist;
+                            hit_tri = -(node_idx + 1);
                         }
                         stack_ptr -= 1;
                         node_idx = stack[stack_ptr];
@@ -451,7 +460,13 @@ function initScene(device) {
                 obj_idx   = -1;
             }
 
-            return hit_dist;
+            var returned : BVHHitResult;
+
+            returned.hit_obj = hit_obj;
+            returned.hit_tri = hit_tri;
+            returned.hit_dis = hit_dist;
+
+            return returned;
         }
 
         // from: https://www.scratchapixel.com/lessons/3d-basic-rendering/ray-tracing-rendering-a-triangle/moller-trumbore-ray-triangle-intersection.html
