@@ -48,12 +48,6 @@ function initMaterialKernel(params) {
 
         @group(1) @binding(0) var<storage, read_write> queues : QueuesStage2;
 
-        /*@group(1) @binding(0) var<storage, read_write> stage_2_queue_size : array<i32>;
-        @group(1) @binding(1) var<storage, read_write> camera_queue : array<i32>;
-        @group(1) @binding(2) var<storage, read_write> material_queue : array<i32>;
-        @group(1) @binding(3) var<storage, read_write> stage_3_queue_size : atomic<i32>;
-        @group(1) @binding(4) var<storage, read_write> ray_trace_queue : array<i32>;*/
-
         ${params.scene.kernels.getHitInfoCode(2)}
 
         const Pi      = 3.14159265358979323846;

@@ -48,12 +48,6 @@ function initLogicKernel(params) {
 
         @group(1) @binding(0) var<storage, read_write> queues : QueuesStage1;
 
-        /*@group(1) @binding(0) var<storage, read_write> stage_2_queue_size : array<atomic<i32>>;
-        @group(1) @binding(1) var<storage, read_write> camera_queue : array<i32>;
-        @group(1) @binding(2) var<storage, read_write> material_queue : array<i32>;
-        @group(1) @binding(3) var<storage, read_write> stage_3_queue_size : atomic<i32>; // not used
-        @group(1) @binding(4) var<storage, read_write> ray_trace_queue : i32; // not used*/
-
         @group(2) @binding(0) var<storage, read_write> image : array<vec4f>;
 
         var<workgroup> wg_stage_2_queue_size : array<atomic<i32>, 2>;
@@ -140,10 +134,6 @@ function initLogicKernel(params) {
                     if (any(path_contribution != vec4f(0.f))) {
                         image[path_state.pixel_index[path_idx]] += path_contribution;
                     }
-
-                    //image[path_state.pixel_index[path_idx]] = vec4f(abs(path_state.path_d[path_idx]), 1.f);
-
-                    //image[path_state.pixel_index[path_idx]] = vec4f(abs(path_state.path_d[path_idx].xyz), 1.f);
                 }
             }
 

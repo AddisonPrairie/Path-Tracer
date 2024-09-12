@@ -48,9 +48,6 @@ function initRayTraceKernel(params) {
 
         @group(1) @binding(0) var<storage, read_write> queues : QueuesStage3;
 
-        /*@group(1) @binding(0) var<storage, read_write> ray_trace_queue_size : i32;
-        @group(1) @binding(1) var<storage, read_write> ray_trace_queue : array<i32>;*/
-
         ${params.scene.kernels.getNearestHitCode(2)}
 
         @compute @workgroup_size(${WG_SIZE})

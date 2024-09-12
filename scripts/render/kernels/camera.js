@@ -54,12 +54,6 @@ function initCameraKernel(params) {
         const PiOver4 = 0.78539816339744830961;
         const Sqrt2   = 1.41421356237309504880;
 
-        /*@group(1) @binding(0) var<storage, read_write> stage_2_queue_size : array<i32>;
-        @group(1) @binding(1) var<storage, read_write> camera_queue : array<i32>;
-        @group(1) @binding(2) var<storage, read_write> material_queue : array<i32>;
-        @group(1) @binding(3) var<storage, read_write> stage_3_queue_size : atomic<i32>;
-        @group(1) @binding(4) var<storage, read_write> ray_trace_queue : array<i32>;*/
-
         var<workgroup> wg_stage_3_queue_size : atomic<i32>;
         var<workgroup> wg_ray_trace_queue : array<i32, ${WG_SIZE}>;
 
