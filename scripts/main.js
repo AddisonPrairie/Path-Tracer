@@ -18,7 +18,7 @@ window.onload = async () => {
     scene.registerMesh({ file: buddhaFile })
     scene.registerMesh({ file: floorFile })
     
-    scene.instanceMesh(0, [0, 0, 2.2], [Math.PI / 2, 0, 0], [5, 5, 5], 0)
+    scene.instanceMesh(0, [0, 0, 2.9], [Math.PI / 2, 0, 0], [7, 7, 7], 0)
 
     scene.instanceMesh(1, [ 0,  0,  0], [0, 0, 0], [.5, .5, .5], 0)
     scene.instanceMesh(1, [ 0,  0, 10], [0, 0, 0], [.5, .5, .5], 0)
@@ -37,12 +37,12 @@ window.onload = async () => {
             width: 512, height: 512
         },
         camera: {
-            lookAt: [0, 0, 2.2],
-            position: [0, 8, 2.2],
+            lookAt: [0, 0, 5],
+            position: [0, 12, 5],
             fov: 60
         },
         settings: {
-            samples: 128
+            samples: 1024
         }
     })
 
