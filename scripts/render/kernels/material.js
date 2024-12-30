@@ -91,11 +91,16 @@ function initMaterialKernel(params) {
                 var hit_info : TriangleHitInfo = get_triangle_hit_info(o, d, hit_obj, hit_tri);
 
                 var hit_pos = o + d * hit_info.dist;
+                var hit_nor : vec3f = hit_info.normal;
 
-                var o1 : vec3f = normalize(ortho(hit_info.normal));
-                var o2 : vec3f = normalize(cross(o1, hit_info.normal));
+                if (dot(hit_nor, d) > 0.f) {
+                    hit_nor = -hit_nor;
+                }
 
-                var wo : vec3f = to_local(o1, o2, hit_info.normal, -d);
+                var o1 : vec3f = normalize(ortho(hit_nor));
+                var o2 : vec3f = normalize(cross(o1, hit_nor));
+
+                var wo : vec3f = to_local(o1, o2, hit_nor, -d);
                 var random_seed : f32 = path_state.random_seed[path_idx];
 
                 var brdf_pdf : vec4f;
@@ -110,12 +115,12 @@ function initMaterialKernel(params) {
                     brdf_pdf = lambert_diffuse_sample_f(wo, &wi, &random_seed, vec3f(.2f), &flags);
                 }
 
-                d = to_world(o1, o2, hit_info.normal, wi);
+                d = to_world(o1, o2, hit_nor, wi);
 
                 path_state.material_throughput_pdf[path_idx] = brdf_pdf;
                 path_state.flags[path_idx] |= flags;
                 path_state.random_seed[path_idx] = random_seed;
-                path_state.path_o[path_idx] = hit_pos + hit_info.normal * .0001;
+                path_state.path_o[path_idx] = hit_pos + hit_nor * .0001;
                 path_state.path_d[path_idx] = d;
 
                 var l_idx : i32 = atomicAdd(&wg_stage_3_queue_size, 1);

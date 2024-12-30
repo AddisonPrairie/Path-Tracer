@@ -13,6 +13,7 @@ function parseObj(file) {
     {
         const lines = file.split("\n")
         let vertexPositions = [1e30, 1e30, 1e30]
+        let vertexCount = 0
 
         for (var x = 0; x < lines.length; x++) {
             const line = lines[x]
@@ -38,12 +39,18 @@ function parseObj(file) {
                         z_max = Math.max(z_max, vz)
 
                         vertexPositions.push(vx, vy, vz)
+
+                        vertexCount++
                         break
                     case "f":
                         let idxs = []
 
                         for (var y = 1; y < tokens.length; y++) {
                             let idx = parseInt(tokens[y])
+
+                            if (idx < 0) {
+                                idx = vertexCount + idx + 1
+                            }
 
                             if (!isNaN(idx)) idxs.push(idx)
                         }
@@ -78,6 +85,8 @@ function parseObj(file) {
             }
         }
     }
+
+    console.log(trisArr)
 
     return { 
         numTriangles: numTris, 
