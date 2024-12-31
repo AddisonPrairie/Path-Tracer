@@ -90,7 +90,7 @@ function initCameraKernel(params) {
                 if (num_writes > 0) {
                     var offset : i32 = atomicAdd(&queues.stage_3_queue_size[0], num_writes);
                     for (var x = 0; x < num_writes; x++) {
-                        queues.ray_trace_queue[offset + x] = wg_ray_trace_queue[x];
+                        queues.nearest_hit_queue[offset + x] = wg_ray_trace_queue[x];
                     }
                 }
             }

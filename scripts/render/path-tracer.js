@@ -35,7 +35,14 @@ function initPathTracer(params) {
         sharedStructCode: SHARED_STRUCTS_CODE()
     })
 
-    const rayTraceKernel = initRayTraceKernel({
+    const nearestHitKernel = initNearestHitKernel({
+        bindGroups, bindGroupLayouts, device,
+        scene: params.scene,
+        numPaths: NUM_PATHS,
+        sharedStructCode: SHARED_STRUCTS_CODE()
+    })
+
+    const anyHitKernel = initAnyHitKernel({
         bindGroups, bindGroupLayouts, device,
         scene: params.scene,
         numPaths: NUM_PATHS,
@@ -104,7 +111,7 @@ function initPathTracer(params) {
         }
         {
             const ta = Date.now()
-            await rayTraceKernel.execute()
+            await nearestHitKernel.execute()
             const tb = Date.now()
 
             if (bLog) console.log("ray trace ", tb - ta)
@@ -155,7 +162,7 @@ function initPathTracer(params) {
 
             /* 
              * 1 <<  0 : material evaluation
-             * 1 <<  1 : 
+             * 1 <<  1 : emissive material evaluation
              */
         };
         
@@ -172,35 +179,35 @@ function initPathTracer(params) {
         
         struct QueuesStage1 {
             stage_2_queue_size : array<atomic<i32>, 2>,
-            stage_3_queue_size : array<atomic<i32>, 1>,
-            f_0 : i32,
+            stage_3_queue_size : array<atomic<i32>, 2>,
 
             camera_queue   : array<i32, ${NUM_PATHS}>,
             material_queue : array<i32, ${NUM_PATHS}>,
 
-            ray_trace_queue : array<i32, ${NUM_PATHS}>,
+            nearest_hit_queue : array<i32, ${NUM_PATHS}>,
+            any_hit_queue : array<i32, ${NUM_PATHS}>,
         };
 
         struct QueuesStage2 {
             stage_2_queue_size : array<i32, 2>,
-            stage_3_queue_size : array<atomic<i32>, 1>,
-            f_0 : i32,
+            stage_3_queue_size : array<atomic<i32>, 2>,
 
             camera_queue   : array<i32, ${NUM_PATHS}>,
             material_queue : array<i32, ${NUM_PATHS}>,
 
-            ray_trace_queue : array<i32, ${NUM_PATHS}>,
+            nearest_hit_queue : array<i32, ${NUM_PATHS}>,
+            any_hit_queue : array<i32, ${NUM_PATHS}>,
         };
 
         struct QueuesStage3 {
             stage_2_queue_size : array<i32, 2>,
-            stage_3_queue_size : array<i32, 1>,
-            f_0 : i32,
+            stage_3_queue_size : array<i32, 2>,
 
             camera_queue   : array<i32, ${NUM_PATHS}>,
             material_queue : array<i32, ${NUM_PATHS}>,
 
-            ray_trace_queue : array<i32, ${NUM_PATHS}>,
+            nearest_hit_queue : array<i32, ${NUM_PATHS}>,
+            any_hit_queue : array<i32, ${NUM_PATHS}>,
         }`
     }
 
@@ -297,7 +304,7 @@ function initPathTracer(params) {
     
         {// create bind group info for queues
             buffers.queues = device.createBuffer({
-                size: 16 + NUM_PATHS * 12,
+                size: 16 + NUM_PATHS * 16,
                 usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | (DEBUG_MODE ? GPUBufferUsage.COPY_SRC : 0)
             })
 

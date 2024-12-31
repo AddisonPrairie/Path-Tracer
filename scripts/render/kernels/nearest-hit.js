@@ -1,4 +1,4 @@
-function initRayTraceKernel(params) {
+function initNearestHitKernel(params) {
     const device = params.device
 
     const WG_SIZE = 64
@@ -57,7 +57,7 @@ function initRayTraceKernel(params) {
                 return;
             }
 
-            var path_idx : i32 = queues.ray_trace_queue[queue_idx];
+            var path_idx : i32 = queues.nearest_hit_queue[queue_idx];
 
             var o : vec3f = path_state.path_o[path_idx];
             var d : vec3f = path_state.path_d[path_idx];

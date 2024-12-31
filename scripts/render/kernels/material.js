@@ -72,6 +72,19 @@ function initMaterialKernel(params) {
             return vec4f(pow(albedo, vec3f(2.2)), (*wi).z);
         }
 
+        // note that this is essentially a dummy function
+        fn emissive_sample_f(
+            wo : vec3f, 
+            wi : ptr<function, vec3f>, 
+            seed : ptr<function, f32>, 
+            emission : vec3f,
+            flags : ptr<function, u32>
+        ) -> vec4f {
+            *wi = vec3f(0.f);
+            *flags = 2u;
+            return vec4f(emission, -1.f);
+        }
+
         @compute @workgroup_size(${WG_SIZE})
         fn main(@builtin(global_invocation_id) global_id : vec3u, @builtin(local_invocation_id) local_id : vec3u) {
             var queue_idx : i32 = i32(global_id.x);
@@ -112,7 +125,13 @@ function initMaterialKernel(params) {
                     brdf_pdf = lambert_diffuse_sample_f(wo, &wi, &random_seed, vec3f(.5f), &flags);
                 }
                 if (material_index == 1) {
-                    brdf_pdf = lambert_diffuse_sample_f(wo, &wi, &random_seed, vec3f(.2f), &flags);
+                    brdf_pdf = emissive_sample_f(wo, &wi, &random_seed, 50.f * vec3f(1., 1., 0.9), &flags);
+                }
+                if (material_index == 2) {
+                    brdf_pdf = lambert_diffuse_sample_f(wo, &wi, &random_seed, vec3f(.5f, 0.f, 0.f), &flags);
+                }
+                if (material_index == 3) {
+                    brdf_pdf = lambert_diffuse_sample_f(wo, &wi, &random_seed, vec3f(0.f, .5f, 0.f), &flags);
                 }
 
                 d = to_world(o1, o2, hit_nor, wi);
@@ -120,11 +139,14 @@ function initMaterialKernel(params) {
                 path_state.material_throughput_pdf[path_idx] = brdf_pdf;
                 path_state.flags[path_idx] |= flags;
                 path_state.random_seed[path_idx] = random_seed;
-                path_state.path_o[path_idx] = hit_pos + hit_nor * .0001;
+                path_state.path_o[path_idx] = hit_pos + hit_nor * 1e-5;
                 path_state.path_d[path_idx] = d;
 
-                var l_idx : i32 = atomicAdd(&wg_stage_3_queue_size, 1);
-                wg_ray_trace_queue[l_idx] = path_idx;
+                // only continue this path if it has a next valid direction
+                if (length(d) > 0.f) {
+                    var l_idx : i32 = atomicAdd(&wg_stage_3_queue_size, 1);
+                    wg_ray_trace_queue[l_idx] = path_idx;
+                }
             }
 
             workgroupBarrier();
@@ -136,7 +158,7 @@ function initMaterialKernel(params) {
                 if (num_writes > 0) {
                     var offset : i32 = atomicAdd(&queues.stage_3_queue_size[0], num_writes);
                     for (var x = 0; x < num_writes; x++) {
-                        queues.ray_trace_queue[offset + x] = wg_ray_trace_queue[x];
+                        queues.nearest_hit_queue[offset + x] = wg_ray_trace_queue[x];
                     }
                 }
             }

@@ -9,37 +9,41 @@ window.onload = async () => {
     }
 
     let floorFile  = await fetch("media/floor.obj").then(f => f.text())
-    let buddhaFile = await fetch("media/buddha.obj").then(f => f.text())
+    let cubeFile = await fetch("media/cube.obj").then(f => f.text())
 
     const scene = initScene(device)
 
     const t0 = Date.now()
 
-    scene.registerMesh({ file: buddhaFile })
+    //scene.registerMesh({ file: buddhaFile })
+    scene.registerMesh({ file: cubeFile })
     scene.registerMesh({ file: floorFile })
     
-    scene.instanceMesh(0, [0, 0, 2.9], [Math.PI / 2, 0, 0], [7, 7, 7], 0)
+    //scene.instanceMesh(0, [0, 0, 2.9], [Math.PI / 2, 0, 0], [7, 7, 7], 0)
 
     scene.instanceMesh(1, [ 0,  0,  0], [0, 0, 0], [.5, .5, .5], 0)
     scene.instanceMesh(1, [ 0,  0, 10], [0, 0, 0], [.5, .5, .5], 0)
     scene.instanceMesh(1, [ 0, -5,  5], [Math.PI / 2, 0, 0], [.5, .5, .5], 0)
-    scene.instanceMesh(1, [-5,  0,  5], [0, Math.PI / 2, 0], [.5, .5, .5], 0)
-    scene.instanceMesh(1, [ 5,  0,  5], [0, Math.PI / 2, 0], [.5, .5, .5], 0)
+    scene.instanceMesh(1, [-5,  0,  5], [0, Math.PI / 2, 0], [.5, .5, .5], 3)
+    scene.instanceMesh(1, [ 5,  0,  5], [0, Math.PI / 2, 0], [.5, .5, .5], 2)
 
+    scene.instanceMesh(1, [0, 0, 9.999], [0, 0, 0], [.2, .2, .2], 1)
+
+    scene.instanceMesh(0, [2, 0, 3], [0, 0, Math.PI / 4.], [1.5, 1.5, 3], 0)
 
     await scene.build()
 
-    console.log(scene)
+    const {w, h} = {w:512, h:512}
 
     const pt = initPathTracer({ 
         device, scene,
         image: {
-            width: 512, height: 512
+            width: w, height: h
         },
         camera: {
             lookAt: [0, 0, 5],
-            position: [0, 12, 5],
-            fov: 60
+            position: [0, 15, 5],
+            fov: 45
         },
         settings: {
             samples: 1024
@@ -51,7 +55,7 @@ window.onload = async () => {
         canvas: document.querySelector("#canvas"),
         image: {
             buffer: pt.getImageBuffer(),
-            width: 512, height: 512
+            width: w, height: h
         }
     })
 

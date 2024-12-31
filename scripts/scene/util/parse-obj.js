@@ -86,8 +86,6 @@ function parseObj(file) {
         }
     }
 
-    console.log(trisArr)
-
     return { 
         numTriangles: numTris, 
         triangleArray: trisArr, 

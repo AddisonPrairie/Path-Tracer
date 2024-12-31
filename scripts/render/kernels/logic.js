@@ -108,12 +108,18 @@ function initLogicKernel(params) {
                         }
                     }
 
+                    if ((flags & 2u) != 0u) {
+                        // then an emissive hit occured
+                        path_contribution += vec4f(path_throughput * path_state.material_throughput_pdf[path_idx].xyz, 0.f);
+                        path_throughput = vec3f(0.f);
+                    } 
+
                     if (num_bounces > 20) {
                         path_throughput = vec3f(0.f);
                     }
 
                     if (!b_hit) {
-                        path_contribution += vec4f(2.f * path_throughput, 0.f);
+                        path_contribution += vec4f(0.f * path_throughput, 0.f);
                         path_throughput = vec3f(0.f);
                     }
 

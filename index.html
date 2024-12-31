@@ -4,7 +4,8 @@
 
         <script src="scripts/display/display.js"></script>
 
-        <script src="scripts/render/kernels/ray-trace.js"></script>
+        <script src="scripts/render/kernels/nearest-hit.js"></script>
+        <script src="scripts/render/kernels/any-hit.js"></script>
         <script src="scripts/render/kernels/material.js"></script>
         <script src="scripts/render/kernels/camera.js"></script>
         <script src="scripts/render/kernels/logic.js"></script>
@@ -36,8 +37,8 @@
                 justify-content: center;
             }
             canvas {
-                width: 700px;
-                height: 700px;
+                width: 512px;
+                height: 512px;
             }
             .no-select {
                 -webkit-user-select: none; /* Safari */        
