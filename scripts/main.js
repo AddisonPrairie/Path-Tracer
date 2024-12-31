@@ -9,7 +9,7 @@ window.onload = async () => {
     }
 
     let floorFile  = await fetch("media/floor.obj").then(f => f.text())
-    let cubeFile = await fetch("media/cube.obj").then(f => f.text())
+    let cubeFile = await fetch("media/buddha.obj").then(f => f.text())
 
     const scene = initScene(device)
 
@@ -19,7 +19,9 @@ window.onload = async () => {
     scene.registerMesh({ file: cubeFile })
     scene.registerMesh({ file: floorFile })
     
-    //scene.instanceMesh(0, [0, 0, 2.9], [Math.PI / 2, 0, 0], [7, 7, 7], 0)
+    scene.instanceMesh(0, [0, 0, 3.5], [Math.PI / 2, 0, 0], [9, 9, 9], 0)
+    scene.instanceMesh(0, [-3, 3, 2.9], [Math.PI / 2, 0, 0], [7, 7, 7], 0)
+
 
     scene.instanceMesh(1, [ 0,  0,  0], [0, 0, 0], [.5, .5, .5], 0)
     scene.instanceMesh(1, [ 0,  0, 10], [0, 0, 0], [.5, .5, .5], 0)
@@ -29,7 +31,8 @@ window.onload = async () => {
 
     scene.instanceMesh(1, [0, 0, 9.999], [0, 0, 0], [.2, .2, .2], 1)
 
-    scene.instanceMesh(0, [2, 0, 3], [0, 0, Math.PI / 4.], [1.5, 1.5, 3], 0)
+    //scene.instanceMesh(0, [2, 0, 3], [0, 0, Math.PI / 4.], [1.5, 1.5, 3], 0)
+    //scene.instanceMesh(0, [])
 
     await scene.build()
 

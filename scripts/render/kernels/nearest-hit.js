@@ -43,8 +43,9 @@ function initNearestHitKernel(params) {
         return /* wgsl */ `
         ${params.sharedStructCode}
 
-        @group(0) @binding(0) var<storage, read_write> path_state : PathState;
-        @group(0) @binding(1) var<uniform> uniforms : Uniforms;
+        @group(0) @binding(0) var<uniform> uniforms : Uniforms;
+        @group(0) @binding(1) var<storage, read_write> path_state_1 : PathState_0;
+        @group(0) @binding(2) var<storage, read_write> path_state_2 : PathState_1;
 
         @group(1) @binding(0) var<storage, read_write> queues : QueuesStage3;
 
@@ -59,13 +60,13 @@ function initNearestHitKernel(params) {
 
             var path_idx : i32 = queues.nearest_hit_queue[queue_idx];
 
-            var o : vec3f = path_state.path_o[path_idx];
-            var d : vec3f = path_state.path_d[path_idx];
+            var o : vec3f = path_state_1.path_o[path_idx];
+            var d : vec3f = path_state_1.path_d[path_idx];
 
             var res : BVHHitResult = intersect_bvh(o, d);
 
-            path_state.hit_obj[path_idx] = res.hit_obj;
-            path_state.hit_tri[path_idx] = res.hit_tri;
+            path_state_1.hit_obj[path_idx] = res.hit_obj;
+            path_state_1.hit_tri[path_idx] = res.hit_tri;
         }`
     }
 }

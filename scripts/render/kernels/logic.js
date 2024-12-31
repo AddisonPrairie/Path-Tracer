@@ -45,8 +45,9 @@ function initLogicKernel(params) {
         return /* wgsl */ `
         ${params.sharedStructCode}
 
-        @group(0) @binding(0) var<storage, read_write> path_state : PathState;
-        @group(0) @binding(1) var<uniform> uniforms : Uniforms;
+        @group(0) @binding(0) var<uniform> uniforms : Uniforms;
+        @group(0) @binding(1) var<storage, read_write> path_state_1 : PathState_0;
+        @group(0) @binding(2) var<storage, read_write> path_state_2 : PathState_1;
 
         @group(1) @binding(0) var<storage, read_write> queues : QueuesStage1;
 
@@ -69,35 +70,40 @@ function initLogicKernel(params) {
             var b_camera_queue   : bool = false;
             var b_material_queue : bool = false;
 
-            if (path_idx >= ${params.numPaths} || (path_state.flags[path_idx] & (1u << 31u)) != 0u) {
+            if (path_idx >= ${params.numPaths} || (path_state_1.flags[path_idx] & (1u << 31u)) != 0u) {
 
             } else {
                 if (uniforms.first_sample > 0) {
                     // special case if this is the first execution of this kernel
-                    path_state.random_seed[path_idx] = f32(baseHash(vec2u(u32(path_idx), u32(path_idx + 1)))) / f32(0xffffffffu) + .008;
-                    path_state.path_throughput[path_idx] = vec3f(1.f);
+                    path_state_1.random_seed[path_idx] = f32(baseHash(vec2u(u32(path_idx), u32(path_idx + 1)))) / f32(0xffffffffu) + .008;
+                    path_state_1.path_throughput[path_idx] = vec3f(1.f);
 
                     b_camera_queue = true;
                     b_get_new_pixel_index = true;
                 } else {
                     // otherwise, see if the path needs to be restarted or continued
-                    var path_throughput : vec3f = path_state.path_throughput[path_idx];
-                    var num_bounces : i32 = path_state.num_bounces[path_idx] + 1;
+                    var path_throughput : vec3f = path_state_1.path_throughput[path_idx];
+                    var num_bounces : i32 = path_state_1.num_bounces[path_idx];
 
                     var path_contribution : vec4f = vec4f(0.f);
 
-                    var b_hit : bool = path_state.hit_obj[path_idx] >= 0;
+                    var b_hit : bool = path_state_1.hit_obj[path_idx] >= 0;
                     var b_new_path : bool = false;
 
-                    var flags : u32 = path_state.flags[path_idx];
+                    var flags : u32 = path_state_1.flags[path_idx];
+
+                    if ((flags & 4u) != 0u) {
+                        // then we need to add in a contribution from estimating direct lighting
+                        path_contribution += vec4f(path_throughput * vec3f(path_state_2.nee_ld[path_idx].xyz), 0.f);
+                    }
 
                     if ((flags & 1u) != 0u) {
                         // then a material hit occurred
-                        path_throughput *= path_state.material_throughput_pdf[path_idx].xyz;
+                        path_throughput *= path_state_1.material_throughput_pdf[path_idx].xyz;
 
                         if (num_bounces > 3) {
-                            var r2 : vec2f = rand2(path_state.random_seed[path_idx]);
-                            path_state.random_seed[path_idx] += 2.f;
+                            var r2 : vec2f = rand2(path_state_1.random_seed[path_idx]);
+                            path_state_1.random_seed[path_idx] += 2.f;
 
                             var q : f32 = min(max(.1, 1. - path_throughput.y), .7);
                             if (r2.x < q) {
@@ -110,9 +116,11 @@ function initLogicKernel(params) {
 
                     if ((flags & 2u) != 0u) {
                         // then an emissive hit occured
-                        path_contribution += vec4f(path_throughput * path_state.material_throughput_pdf[path_idx].xyz, 0.f);
+                        if (num_bounces == 1) {
+                            path_contribution += vec4f(path_throughput * path_state_1.material_throughput_pdf[path_idx].xyz, 0.f);
+                        }
                         path_throughput = vec3f(0.f);
-                    } 
+                    }
 
                     if (num_bounces > 20) {
                         path_throughput = vec3f(0.f);
@@ -132,10 +140,10 @@ function initLogicKernel(params) {
                         num_bounces = 0;
                         path_throughput = vec3f(1.f);
 
-                        if (path_state.samples_in_pixel[path_idx] >= ${SAMPLES_PER_PIXEL_PER_PATH - 1}) {
+                        if (path_state_1.samples_in_pixel[path_idx] >= ${SAMPLES_PER_PIXEL_PER_PATH - 1}) {
                             b_get_new_pixel_index = true;
                         } else {
-                            path_state.samples_in_pixel[path_idx] += 1;
+                            path_state_1.samples_in_pixel[path_idx] += 1;
                         }
 
                     } else {
@@ -143,16 +151,16 @@ function initLogicKernel(params) {
                         num_bounces += 1;
                     }
 
-                    path_state.path_throughput[path_idx] = path_throughput;
-                    path_state.num_bounces[path_idx] = num_bounces;
-                    path_state.flags[path_idx] = 0u;
+                    path_state_1.path_throughput[path_idx] = path_throughput;
+                    path_state_1.num_bounces[path_idx] = num_bounces;
+                    path_state_1.flags[path_idx] = 0u;
 
                     // add light accumulation to image
                     if (any(path_contribution != vec4f(0.f))) {
-                        f32_atomic_add(&image[4 * path_state.pixel_index[path_idx] + 0], path_contribution.x);
-                        f32_atomic_add(&image[4 * path_state.pixel_index[path_idx] + 1], path_contribution.y);
-                        f32_atomic_add(&image[4 * path_state.pixel_index[path_idx] + 2], path_contribution.z);
-                        f32_atomic_add(&image[4 * path_state.pixel_index[path_idx] + 3], path_contribution.w);                        
+                        f32_atomic_add(&image[4 * path_state_1.pixel_index[path_idx] + 0], path_contribution.x);
+                        f32_atomic_add(&image[4 * path_state_1.pixel_index[path_idx] + 1], path_contribution.y);
+                        f32_atomic_add(&image[4 * path_state_1.pixel_index[path_idx] + 2], path_contribution.z);
+                        f32_atomic_add(&image[4 * path_state_1.pixel_index[path_idx] + 3], path_contribution.w);                        
                     }
                 }
             }
@@ -171,7 +179,7 @@ function initLogicKernel(params) {
                 var num : i32 = atomicLoad(&num_new_pixel_index);
                 if (num > 0) {
                     // then store the global offset back to local storage
-                    atomicStore(&num_new_pixel_index, atomicAdd(&path_state.pixel_counter, num));
+                    atomicStore(&num_new_pixel_index, atomicAdd(&path_state_1.pixel_counter, num));
                 }
             }
 
@@ -182,10 +190,10 @@ function initLogicKernel(params) {
 
                 if (new_pixel_index >= ${Math.ceil(params.imageWidth * params.imageHeight * params.samples / SAMPLES_PER_PIXEL_PER_PATH)}) {
                     // if the image is done rendering, kill the path
-                    path_state.flags[path_idx] |= (1u << 31u);
+                    path_state_1.flags[path_idx] |= (1u << 31u);
                 } else {
-                    path_state.pixel_index[path_idx] = (new_pixel_index) % (uniforms.image_size.x * uniforms.image_size.y);
-                    path_state.samples_in_pixel[path_idx] = 0;
+                    path_state_1.pixel_index[path_idx] = (new_pixel_index) % (uniforms.image_size.x * uniforms.image_size.y);
+                    path_state_1.samples_in_pixel[path_idx] = 0;
                 }
             }
 

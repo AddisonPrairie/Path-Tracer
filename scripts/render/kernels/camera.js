@@ -41,8 +41,9 @@ function initCameraKernel(params) {
         return /* wgsl */ `
         ${params.sharedStructCode}
 
-        @group(0) @binding(0) var<storage, read_write> path_state : PathState;
-        @group(0) @binding(1) var<uniform> uniforms : Uniforms;
+        @group(0) @binding(0) var<uniform> uniforms : Uniforms;
+        @group(0) @binding(1) var<storage, read_write> path_state_1 : PathState_0;
+        @group(0) @binding(2) var<storage, read_write> path_state_2 : PathState_1;
 
         @group(1) @binding(0) var<storage, read_write> queues : QueuesStage2;
 
@@ -65,17 +66,17 @@ function initCameraKernel(params) {
             } else {
                 // compute camera ray
                 var path_idx : i32 = queues.camera_queue[queue_idx];
-                var pixel_idx : i32 = path_state.pixel_index[path_idx];
-                var coord : vec2f = vec2f(vec2i(pixel_idx % uniforms.image_size.x, pixel_idx / uniforms.image_size.x)) + rand2(path_state.random_seed[path_idx]);
-                path_state.random_seed[path_idx] += 2.f;
+                var pixel_idx : i32 = path_state_1.pixel_index[path_idx];
+                var coord : vec2f = vec2f(vec2i(pixel_idx % uniforms.image_size.x, pixel_idx / uniforms.image_size.x)) + rand2(path_state_1.random_seed[path_idx]);
+                path_state_1.random_seed[path_idx] += 2.f;
 
                 var o : vec3f;
                 var d : vec3f;
 
                 getCameraRay(coord, &o, &d);
 
-                path_state.path_o[path_idx] = o;
-                path_state.path_d[path_idx] = d;
+                path_state_1.path_o[path_idx] = o;
+                path_state_1.path_d[path_idx] = d;
 
                 var l_idx : i32 = atomicAdd(&wg_stage_3_queue_size, 1);
                 wg_ray_trace_queue[l_idx] = path_idx;

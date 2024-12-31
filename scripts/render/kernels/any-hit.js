@@ -43,8 +43,9 @@ function initAnyHitKernel(params) {
         return /* wgsl */ `
         ${params.sharedStructCode}
 
-        @group(0) @binding(0) var<storage, read_write> path_state : PathState;
-        @group(0) @binding(1) var<uniform> uniforms : Uniforms;
+        @group(0) @binding(0) var<uniform> uniforms : Uniforms;
+        @group(0) @binding(1) var<storage, read_write> path_state_1 : PathState_0;
+        @group(0) @binding(2) var<storage, read_write> path_state_2 : PathState_1;
 
         @group(1) @binding(0) var<storage, read_write> queues : QueuesStage3;
 
@@ -59,10 +60,15 @@ function initAnyHitKernel(params) {
 
             var path_idx : i32 = queues.any_hit_queue[queue_idx];
 
-            var o : vec3f = path_state.path_o[path_idx];
-            var d : vec3f = path_state.path_d[path_idx];
+            var o : vec3f = path_state_1.path_o[path_idx];
+            
+            var d_dist : vec4f = path_state_2.nee_direction_distance[path_idx];
 
-            var res : bool = intersect_bvh_any(o, d, 1.f);
+            var res : bool = intersect_bvh_any(o, d_dist.xyz, d_dist.w - 1e-4);
+
+            if (!res) {
+                path_state_1.flags[path_idx] |= 4u;
+            }
 
             // don't forget to actually write something here
         }`

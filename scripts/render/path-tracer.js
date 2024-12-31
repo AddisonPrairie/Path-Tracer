@@ -2,7 +2,8 @@ function initPathTracer(params) {
     const device = params.device
 
     const NUM_PATHS = 1_000_000
-    const BYTES_PER_PATH = 116
+    const BYTES_PER_PATH_1 = 116
+    const BYTES_PER_PATH_2 = 32
 
     const DEBUG_MODE = true
 
@@ -81,7 +82,7 @@ function initPathTracer(params) {
 
         { // clear out the queue counts from last step
             if (renderInfo.numSteps > 0) {
-                device.queue.writeBuffer(buffers.queues, 0, new Int32Array([0, 0, 0]), 0)
+                device.queue.writeBuffer(buffers.queues, 0, new Int32Array([0, 0, 0, 0]), 0)
             }
         }
 
@@ -114,17 +115,25 @@ function initPathTracer(params) {
             await nearestHitKernel.execute()
             const tb = Date.now()
 
-            if (bLog) console.log("ray trace ", tb - ta)
+            if (bLog) console.log("nearest hit ", tb - ta)
+        }
+        {
+            const ta = Date.now()
+            await anyHitKernel.execute()
+            const tb = Date.now()
+
+            if (bLog) console.log("any hit ", tb - ta)
         }
         if (bLog) console.log("-------")
 
-        /*const queueInfo = await readBackBuffer(device, buffers.queues)
+        const queueInfo = await readBackBuffer(device, buffers.queues)
 
         console.log(
             "camera: ", (new Int32Array(queueInfo))[0],
             "material: ", (new Int32Array(queueInfo))[1],
-            "ray trace: ", (new Int32Array(queueInfo))[2],
-        )*/
+            "nearest hit: ", (new Int32Array(queueInfo))[2],
+            "any hit: ", (new Int32Array(queueInfo))[3]
+        )
 
         renderInfo.numSteps++
     }
@@ -135,7 +144,7 @@ function initPathTracer(params) {
 
     function SHARED_STRUCTS_CODE() {
         return /* wgsl */ `
-        struct PathState {
+        struct PathState_0 {
             // consider moving this elsewhere later (WHEN DELETED, CHANGE BUFFER SIZE BELOW)
             pixel_counter : atomic<i32>,
 
@@ -163,7 +172,13 @@ function initPathTracer(params) {
             /* 
              * 1 <<  0 : material evaluation
              * 1 <<  1 : emissive material evaluation
+             * 1 <<  2 : NEE sample is unoccluded
              */
+        };
+
+        struct PathState_1 {
+            nee_direction_distance : array<vec4f, ${NUM_PATHS}>, // 16 bytes
+            nee_ld : array<vec4f, ${NUM_PATHS}>, // 16 bytes
         };
         
         struct Uniforms {
@@ -257,14 +272,21 @@ function initPathTracer(params) {
                         binding: 0,
                         visibility: GPUShaderStage.COMPUTE,
                         buffer: {
-                            type: "storage"
+                            type: "uniform"
                         }
                     },
                     {
                         binding: 1,
                         visibility: GPUShaderStage.COMPUTE,
                         buffer: {
-                            type: "uniform"
+                            type: "storage"
+                        }
+                    },
+                    {
+                        binding: 2,
+                        visibility: GPUShaderStage.COMPUTE,
+                        buffer: {
+                            type: "storage"
                         }
                     }
                 ]
@@ -275,9 +297,15 @@ function initPathTracer(params) {
                 usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
             })
 
-            buffers.pathState = device.createBuffer({
+            buffers.pathState1 = device.createBuffer({
                 // additional four bytes are because of pixel_counter
-                size: 4 + BYTES_PER_PATH * NUM_PATHS,
+                size: 4 + BYTES_PER_PATH_1 * NUM_PATHS,
+                usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | (DEBUG_MODE ? GPUBufferUsage.COPY_SRC : 0)
+            })
+
+            buffers.pathState2 = device.createBuffer({
+                // additional four bytes are because of pixel_counter
+                size: BYTES_PER_PATH_2 * NUM_PATHS,
                 usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | (DEBUG_MODE ? GPUBufferUsage.COPY_SRC : 0)
             })
 
@@ -288,14 +316,21 @@ function initPathTracer(params) {
                         binding: 0,
                         visibility: GPUShaderStage.COMPUTE,
                         resource: {
-                            buffer: buffers.pathState
+                            buffer: buffers.uniforms
                         }
                     },
                     {
                         binding: 1,
                         visibility: GPUShaderStage.COMPUTE,
                         resource: {
-                            buffer: buffers.uniforms
+                            buffer: buffers.pathState1
+                        }
+                    },
+                    {
+                        binding: 2,
+                        visibility: GPUShaderStage.COMPUTE,
+                        resource: {
+                            buffer: buffers.pathState2
                         }
                     }
                 ]

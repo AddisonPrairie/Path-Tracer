@@ -43,8 +43,9 @@ function initMaterialKernel(params) {
         return /* wgsl */ `
         ${params.sharedStructCode}
 
-        @group(0) @binding(0) var<storage, read_write> path_state : PathState;
-        @group(0) @binding(1) var<uniform> uniforms : Uniforms;
+        @group(0) @binding(0) var<uniform> uniforms : Uniforms;
+        @group(0) @binding(1) var<storage, read_write> path_state_1 : PathState_0;
+        @group(0) @binding(2) var<storage, read_write> path_state_2 : PathState_1;
 
         @group(1) @binding(0) var<storage, read_write> queues : QueuesStage2;
 
@@ -58,8 +59,9 @@ function initMaterialKernel(params) {
         const PiOver4 = 0.78539816339744830961;
         const Sqrt2   = 1.41421356237309504880;
 
-        var<workgroup> wg_stage_3_queue_size : atomic<i32>;
-        var<workgroup> wg_ray_trace_queue : array<i32, ${WG_SIZE}>;
+        var<workgroup> wg_stage_3_queue_size : array<atomic<i32>, 2>;
+        var<workgroup> wg_nearest_hit_queue : array<i32, ${WG_SIZE}>;
+        var<workgroup> wg_any_hit_queue : array<i32, ${WG_SIZE}>;
 
         fn lambert_diffuse_sample_f(
             wo : vec3f, 
@@ -69,7 +71,15 @@ function initMaterialKernel(params) {
             flags : ptr<function, u32>
         ) -> vec4f {
             *wi = cosineSampleHemisphere(rand2(*seed)); *seed += 2.f;
-            return vec4f(pow(albedo, vec3f(2.2)), (*wi).z);
+            return vec4f(pow(albedo, vec3f(2.2)) * InvPi, (*wi).z);
+        }
+
+        fn lambert_diffuse_f(
+            wo : vec3f,
+            wi : vec3f,
+            albedo : vec3f
+        ) -> vec3f {
+            return pow(albedo, vec3f(2.2)) * InvPi;
         }
 
         // note that this is essentially a dummy function
@@ -85,6 +95,35 @@ function initMaterialKernel(params) {
             return vec4f(emission, -1.f);
         }
 
+        fn area_light_sample_li(
+            light_o : vec3f,
+            light_le : vec3f,
+            light_for : vec3f,
+            light_right : vec3f,
+            light_scale : vec2f,
+            wi : ptr<function, vec3f>,
+            dist : ptr<function, f32>,
+            o : vec3f,
+            r2 : vec2f,
+        ) -> vec4f {
+            var area : f32 = 4.f * (light_scale.x * light_scale.y);
+
+            // generate the sample point
+            var sample_point_local : vec2f = (r2 - vec2f(.5f)) * 2.f * light_scale;
+            var sample_point : vec3f = light_o + light_right * sample_point_local.x + normalize(cross(light_for, light_right)) * sample_point_local.y;
+
+            var del_pos : vec3f = sample_point - o;
+            var light_dist : f32 = length(del_pos);
+
+            // calculate outgoing direction and pdf
+            *wi = del_pos / light_dist;
+            var local_pdf : f32 = light_dist * light_dist / (area * abs(dot(light_for, *wi)));
+
+            *dist = light_dist;
+
+            return vec4f(light_le, local_pdf);
+        }
+
         @compute @workgroup_size(${WG_SIZE})
         fn main(@builtin(global_invocation_id) global_id : vec3u, @builtin(local_invocation_id) local_id : vec3u) {
             var queue_idx : i32 = i32(global_id.x);
@@ -95,11 +134,11 @@ function initMaterialKernel(params) {
 
                 var flags : u32 = 1u;
 
-                var o : vec3f = path_state.path_o[path_idx];
-                var d : vec3f = path_state.path_d[path_idx];
+                var o : vec3f = path_state_1.path_o[path_idx];
+                var d : vec3f = path_state_1.path_d[path_idx];
 
-                var hit_obj : i32 = path_state.hit_obj[path_idx];
-                var hit_tri : i32 = path_state.hit_tri[path_idx];
+                var hit_obj : i32 = path_state_1.hit_obj[path_idx];
+                var hit_tri : i32 = path_state_1.hit_tri[path_idx];
 
                 var hit_info : TriangleHitInfo = get_triangle_hit_info(o, d, hit_obj, hit_tri);
 
@@ -114,18 +153,21 @@ function initMaterialKernel(params) {
                 var o2 : vec3f = normalize(cross(o1, hit_nor));
 
                 var wo : vec3f = to_local(o1, o2, hit_nor, -d);
-                var random_seed : f32 = path_state.random_seed[path_idx];
+                var random_seed : f32 = path_state_1.random_seed[path_idx];
 
                 var brdf_pdf : vec4f;
                 var wi : vec3f;
 
                 var material_index : i32 = objects[hit_obj].material;
 
+                var hit_light : bool = false;
+
                 if (material_index == 0) {
-                    brdf_pdf = lambert_diffuse_sample_f(wo, &wi, &random_seed, vec3f(.5f), &flags);
+                    brdf_pdf = lambert_diffuse_sample_f(wo, &wi, &random_seed, vec3f(.9f), &flags);
                 }
                 if (material_index == 1) {
                     brdf_pdf = emissive_sample_f(wo, &wi, &random_seed, 50.f * vec3f(1., 1., 0.9), &flags);
+
                 }
                 if (material_index == 2) {
                     brdf_pdf = lambert_diffuse_sample_f(wo, &wi, &random_seed, vec3f(.5f, 0.f, 0.f), &flags);
@@ -136,29 +178,94 @@ function initMaterialKernel(params) {
 
                 d = to_world(o1, o2, hit_nor, wi);
 
-                path_state.material_throughput_pdf[path_idx] = brdf_pdf;
-                path_state.flags[path_idx] |= flags;
-                path_state.random_seed[path_idx] = random_seed;
-                path_state.path_o[path_idx] = hit_pos + hit_nor * 1e-5;
-                path_state.path_d[path_idx] = d;
+                // sample direct lighting
+                if (material_index != 1) {
+                    var light_dist : f32 = -1.f;
+                    var light_dir : vec3f = vec3f(0.f);
+
+                    var int_pdf : vec4f;
+                    {
+                        var r2 : vec2f = rand2(random_seed); random_seed += 2.f;
+
+                        int_pdf = area_light_sample_li(
+                            vec3f(0.f, 0.f, 9.999),
+                            vec3f(25.f),
+                            vec3f(0., 0., -1.),
+                            vec3f(0., 1., 0.),
+                            vec2f(2., 2.),
+                            &light_dir,
+                            &light_dist,
+                            hit_pos,
+                            r2
+                        );
+                    }
+
+                    var light_dir_local : vec3f = to_local(o1, o2, hit_nor, light_dir);
+
+                    var f : vec3f = vec3f(0.f);
+
+                    if (material_index == 0) {
+                        f = lambert_diffuse_f(wo, wi, vec3f(.9f));
+                    }
+                    if (material_index == 1) {
+                        f = vec3f(0.f);
+                    }
+                    if (material_index == 2) {
+                        f = lambert_diffuse_f(wo, wi, vec3f(.5f, 0.f, 0.f));
+                    }
+                    if (material_index == 3) {
+                        f = lambert_diffuse_f(wo, wi, vec3f(0.f, .5f, 0.f));
+                    }
+
+                    f *= light_dir_local.z;
+
+                    var ld : vec3f = f * int_pdf.xyz / int_pdf.w;
+
+                    if (any(ld >= vec3f(0.f))) {
+                        // then we need to generate an any hit ray
+                        var l_idx : i32 = atomicAdd(&wg_stage_3_queue_size[1], 1);
+                        wg_any_hit_queue[l_idx] = path_idx;
+
+                        path_state_2.nee_direction_distance[path_idx] = vec4f(light_dir, light_dist);
+                        path_state_2.nee_ld[path_idx] = vec4f(ld, 3.1415);
+                    }
+                }
+
+                path_state_1.material_throughput_pdf[path_idx] = brdf_pdf;
+                path_state_1.flags[path_idx] |= flags;
+                path_state_1.random_seed[path_idx] = random_seed;
+                path_state_1.path_o[path_idx] = hit_pos + hit_nor * 1e-5;
+                path_state_1.path_d[path_idx] = d;
 
                 // only continue this path if it has a next valid direction
                 if (length(d) > 0.f) {
-                    var l_idx : i32 = atomicAdd(&wg_stage_3_queue_size, 1);
-                    wg_ray_trace_queue[l_idx] = path_idx;
+                    var l_idx : i32 = atomicAdd(&wg_stage_3_queue_size[0], 1);
+                    wg_nearest_hit_queue[l_idx] = path_idx;
                 }
             }
 
             workgroupBarrier();
 
-            // if this is the first thread in the work group, copy local ray trace queue to global memory
+            // if this is the first thread in the work group, copy local queues to global memory
             if (local_id.x == 0u) {
-                var num_writes = atomicLoad(&wg_stage_3_queue_size);
+                {
+                    var num_writes = atomicLoad(&wg_stage_3_queue_size[0]);
 
-                if (num_writes > 0) {
-                    var offset : i32 = atomicAdd(&queues.stage_3_queue_size[0], num_writes);
-                    for (var x = 0; x < num_writes; x++) {
-                        queues.nearest_hit_queue[offset + x] = wg_ray_trace_queue[x];
+                    if (num_writes > 0) {
+                        var offset : i32 = atomicAdd(&queues.stage_3_queue_size[0], num_writes);
+                        for (var x = 0; x < num_writes; x++) {
+                            queues.nearest_hit_queue[offset + x] = wg_nearest_hit_queue[x];
+                        }
+                    }
+                }
+                {
+                    var num_writes = atomicLoad(&wg_stage_3_queue_size[1]);
+
+                    if (num_writes > 0) {
+                        var offset : i32 = atomicAdd(&queues.stage_3_queue_size[1], num_writes);
+                        for (var x = 0; x < num_writes; x++) {
+                            queues.any_hit_queue[offset + x] = wg_any_hit_queue[x];
+                        }
                     }
                 }
             }
