@@ -86,7 +86,7 @@ function initPathTracer(params) {
             }
         }
 
-        const bLog = false
+        const bLog = true
 
         if (bLog) console.log("-------")
         {
@@ -126,14 +126,14 @@ function initPathTracer(params) {
         }
         if (bLog) console.log("-------")
 
-        const queueInfo = await readBackBuffer(device, buffers.queues)
+        /*const queueInfo = await readBackBuffer(device, buffers.queues)
 
         console.log(
             "camera: ", (new Int32Array(queueInfo))[0],
             "material: ", (new Int32Array(queueInfo))[1],
             "nearest hit: ", (new Int32Array(queueInfo))[2],
             "any hit: ", (new Int32Array(queueInfo))[3]
-        )
+        )*/
 
         renderInfo.numSteps++
     }

@@ -45,7 +45,7 @@ window.onload = async () => {
         },
         camera: {
             lookAt: [0, 0, 5],
-            position: [0, 15, 5],
+            position: [0, 13, 5],
             fov: 45
         },
         settings: {
