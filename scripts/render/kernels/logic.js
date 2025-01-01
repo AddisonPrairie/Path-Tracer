@@ -130,7 +130,7 @@ function initLogicKernel(params) {
                     }
 
                     if (!b_hit) {
-                        path_contribution += vec4f(0.f * path_throughput, 0.f);
+                        path_contribution += vec4f(1.f * path_throughput, 0.f);
                         path_throughput = vec3f(0.f);
                     }
 
@@ -166,7 +166,7 @@ function initLogicKernel(params) {
                     path_state_1.flags[path_idx] = next_flags;
 
                     // add light accumulation to image
-                    if (any(path_contribution != vec4f(0.f))) {
+                    if (any(path_contribution != vec4f(0.f)) && !any(path_contribution != path_contribution)) {
                         f32_atomic_add(&image[4 * path_state_1.pixel_index[path_idx] + 0], path_contribution.x);
                         f32_atomic_add(&image[4 * path_state_1.pixel_index[path_idx] + 1], path_contribution.y);
                         f32_atomic_add(&image[4 * path_state_1.pixel_index[path_idx] + 2], path_contribution.z);

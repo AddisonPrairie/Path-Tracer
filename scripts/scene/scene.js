@@ -3,151 +3,388 @@ function initScene(device) {
     const builders = initBuilders(device)
 
     // externally editable state
-    let meshes  = []
+    let meshes = []
     let objects = []
+    let lights = []
+    let materials = []
 
     // internal state
     let sceneGPUState = null
     let sceneBindGroupInfo = null
+    let materialBindGroupInfo = null
 
-    return { registerMesh, instanceMesh, build, kernels: { getNearestHitCode, getAnyHitCode, getHitInfoCode, getSceneBindGroupInfo } }
+    let loadedCoreMeshes = {
+        "square" : null,
+    }
+
+    return { registerMesh, instanceMesh, build, addLight, addMaterial, getSceneBindGroupInfo, getMaterialBindGroupInfo, kernels: { getNearestHitCode, getAnyHitCode, getHitInfoCode } }
 
     async function build() {
-        // build BVHs for all meshes included in the scene
-        let utilizedMeshOrder = {}
-        for (var i = 0; i < objects.length; i++) {
-            if (objects[i].type === "mesh") utilizedMeshOrder[objects[i].meshID] = {}
-        }
-        let utilizedMeshCount = 0
-        let runningTriOffset  = 0
-        for (var x in utilizedMeshOrder) {
-            utilizedMeshOrder[x] = { order: utilizedMeshCount++, triangleOffset: runningTriOffset }
-            if (!meshes[x].bvh) {
-                meshes[x].bvh = await builders.buildMeshBVH(meshes[x].mesh)
+        {
+            // build BVHs for all meshes included in the scene
+            let utilizedMeshOrder = {}
+            for (var i = 0; i < objects.length; i++) {
+                if (objects[i].type === "mesh") utilizedMeshOrder[objects[i].meshID] = {}
             }
-            runningTriOffset += meshes[x].bvh.numTriangles
+            let utilizedMeshCount = 0
+            let runningTriOffset  = 0
+            for (var x in utilizedMeshOrder) {
+                utilizedMeshOrder[x] = { order: utilizedMeshCount++, triangleOffset: runningTriOffset }
+                if (!meshes[x].bvh) {
+                    meshes[x].bvh = await builders.buildMeshBVH(meshes[x].mesh)
+                }
+                runningTriOffset += meshes[x].bvh.numTriangles
+            }
+
+            // pack all triangle meshes into a single buffer, including rewriting pointers in BVHs
+            let packedMeshes = await builders.packMeshes(meshes, utilizedMeshOrder)
+
+            // compute transform matrices for all meshes
+            for (var i = 0; i < objects.length; i++) {
+                if (objects[i].type === "mesh") {
+                    objects[i].transformMatrices = computeTransformMatrices(objects[i].transform)
+                }
+            }
+            
+            // compute the bounding boxes of every object in the scene, and the overall scene bounds
+            let bounds = { min: [1e30, 1e30, 1e30], max: [-1e30, -1e30, -1e30] }
+            for (var i = 0; i < objects.length; i++) {
+                if (objects[i].type === "mesh") {
+                    objects[i].bounds = getTransformedBoundingBox(objects[i].transformMatrices, meshes[objects[i].meshID].bvh.bounds)
+                }
+                if (objects[i].type === "sphere") {
+                    objects[i].bounds = {
+                        min: [objects[i].position[0] - objects[i].radius, objects[i].position[1] - objects[i].radius, objects[i].position[2] - objects[i].radius],
+                        max: [objects[i].position[0] + objects[i].radius, objects[i].position[1] + objects[i].radius, objects[i].position[2] + objects[i].radius],
+                    }
+                }
+
+                bounds.min[0] = Math.min(bounds.min[0], objects[i].bounds.min[0])
+                bounds.min[1] = Math.min(bounds.min[1], objects[i].bounds.min[1])
+                bounds.min[2] = Math.min(bounds.min[2], objects[i].bounds.min[2])
+
+                bounds.max[0] = Math.max(bounds.max[0], objects[i].bounds.max[0])
+                bounds.max[1] = Math.max(bounds.max[1], objects[i].bounds.max[1])
+                bounds.max[2] = Math.max(bounds.max[2], objects[i].bounds.max[2])
+            }
+
+            let TLAS = await builders.buildTLAS({ objects, bounds })
+
+            // create the object descriptor buffer
+            let objectsBuffer = await builders.packObjects(objects, TLAS.rearrangeBuffer, utilizedMeshOrder)
+
+            sceneGPUState = {
+                tlasBVHBuffer : TLAS.bvhBuffer,
+                objectsBuffer : objectsBuffer,
+                meshBVHBuffer : packedMeshes.bvhBuffer,
+                meshTriBuffer : packedMeshes.triBuffer
+            }
+
+            const BG_LAYOUT = device.createBindGroupLayout({
+                entries: [
+                    {
+                        binding: 0,
+                        visibility: GPUShaderStage.COMPUTE,
+                        buffer: {
+                            type: "storage"
+                        }
+                    },
+                    {
+                        binding: 1,
+                        visibility: GPUShaderStage.COMPUTE,
+                        buffer: {
+                            type: "storage"
+                        }
+                    },
+                    {
+                        binding: 2,
+                        visibility: GPUShaderStage.COMPUTE,
+                        buffer: {
+                            type: "storage"
+                        }
+                    },
+                    {
+                        binding: 3,
+                        visibility: GPUShaderStage.COMPUTE,
+                        buffer: {
+                            type: "storage"
+                        }
+                    }
+                ]
+            })
+
+            const BG = device.createBindGroup({
+                layout: BG_LAYOUT,
+                entries: [
+                    {
+                        binding: 0,
+                        visibility: GPUShaderStage.COMPUTE,
+                        resource: {
+                            buffer: sceneGPUState.tlasBVHBuffer
+                        }
+                    },
+                    {
+                        binding: 1,
+                        visibility: GPUShaderStage.COMPUTE,
+                        resource: {
+                            buffer: sceneGPUState.objectsBuffer
+                        }
+                    },
+                    {
+                        binding: 2,
+                        visibility: GPUShaderStage.COMPUTE,
+                        resource: {
+                            buffer: sceneGPUState.meshBVHBuffer
+                        }
+                    },
+                    {
+                        binding: 3,
+                        visibility: GPUShaderStage.COMPUTE,
+                        resource: {
+                            buffer: sceneGPUState.meshTriBuffer
+                        }
+                    }
+                ]
+            })
+
+            sceneBindGroupInfo = {
+                bindGroup: BG,
+                bindGroupLayout: BG_LAYOUT,
+            }
         }
 
-        // pack all triangle meshes into a single buffer, including rewriting pointers in BVHs
-        let packedMeshes = await builders.packMeshes(meshes, utilizedMeshOrder)
+        {
+            const BG_LAYOUT = device.createBindGroupLayout({
+                entries: [
+                    {
+                        binding: 0,
+                        visibility: GPUShaderStage.COMPUTE,
+                        buffer: {
+                            type: "uniform"
+                        }
+                    },
+                    {
+                        binding: 1,
+                        visibility: GPUShaderStage.COMPUTE,
+                        buffer: {
+                            type: "uniform"
+                        }
+                    }
+                ]
+            })
 
-        // compute transform matrices for all meshes
-        for (var i = 0; i < objects.length; i++) {
-            if (objects[i].type === "mesh") {
-                objects[i].transformMatrices = computeTransformMatrices(objects[i].transform)
-            }
-        }
-        
-        // compute the bounding boxes of every object in the scene, and the overall scene bounds
-        let bounds = { min: [1e30, 1e30, 1e30], max: [-1e30, -1e30, -1e30] }
-        for (var i = 0; i < objects.length; i++) {
-            if (objects[i].type === "mesh") {
-                objects[i].bounds = getTransformedBoundingBox(objects[i].transformMatrices, meshes[objects[i].meshID].bvh.bounds)
-            }
-            if (objects[i].type === "sphere") {
-                objects[i].bounds = {
-                    min: [objects[i].position[0] - objects[i].radius, objects[i].position[1] - objects[i].radius, objects[i].position[2] - objects[i].radius],
-                    max: [objects[i].position[0] + objects[i].radius, objects[i].position[1] + objects[i].radius, objects[i].position[2] + objects[i].radius],
+            const materialBuffer = device.createBuffer({
+                size: 64 * 128,
+                usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC
+            })
+
+            const lightBuffer = device.createBuffer({
+                size: 128 * 128,
+                usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC
+            })
+
+            function copyIntoBuffer(source, target, targetOffset) {
+                const targetView = new Uint8Array(target)
+                const sourceView = new Uint8Array(source)
+
+                for (var x = 0; x < sourceView.length; x++) {
+                    targetView[targetOffset + x] = sourceView[x]
                 }
             }
 
-            bounds.min[0] = Math.min(bounds.min[0], objects[i].bounds.min[0])
-            bounds.min[1] = Math.min(bounds.min[1], objects[i].bounds.min[1])
-            bounds.min[2] = Math.min(bounds.min[2], objects[i].bounds.min[2])
+            {// put together the material buffer
+                const cpuMaterialBuffer = new ArrayBuffer(materials.length * 64)
 
-            bounds.max[0] = Math.max(bounds.max[0], objects[i].bounds.max[0])
-            bounds.max[1] = Math.max(bounds.max[1], objects[i].bounds.max[1])
-            bounds.max[2] = Math.max(bounds.max[2], objects[i].bounds.max[2])
-        }
-
-        let TLAS = await builders.buildTLAS({ objects, bounds })
-
-        // create the object descriptor buffer
-        let objectsBuffer = await builders.packObjects(objects, TLAS.rearrangeBuffer, utilizedMeshOrder)
-
-        sceneGPUState = {
-            tlasBVHBuffer : TLAS.bvhBuffer,
-            objectsBuffer : objectsBuffer,
-            meshBVHBuffer : packedMeshes.bvhBuffer,
-            meshTriBuffer : packedMeshes.triBuffer
-        }
-
-        const BG_LAYOUT = device.createBindGroupLayout({
-            entries: [
-                {
-                    binding: 0,
-                    visibility: GPUShaderStage.COMPUTE,
-                    buffer: {
-                        type: "storage"
-                    }
-                },
-                {
-                    binding: 1,
-                    visibility: GPUShaderStage.COMPUTE,
-                    buffer: {
-                        type: "storage"
-                    }
-                },
-                {
-                    binding: 2,
-                    visibility: GPUShaderStage.COMPUTE,
-                    buffer: {
-                        type: "storage"
-                    }
-                },
-                {
-                    binding: 3,
-                    visibility: GPUShaderStage.COMPUTE,
-                    buffer: {
-                        type: "storage"
-                    }
+                for (var x = 0; x < materials.length; x++) {
+                    copyIntoBuffer(materials[x].buffer, cpuMaterialBuffer, x * 64)
                 }
-            ]
-        })
 
-        const BG = device.createBindGroup({
-            layout: BG_LAYOUT,
-            entries: [
-                {
-                    binding: 0,
-                    visibility: GPUShaderStage.COMPUTE,
-                    resource: {
-                        buffer: sceneGPUState.tlasBVHBuffer
-                    }
-                },
-                {
-                    binding: 1,
-                    visibility: GPUShaderStage.COMPUTE,
-                    resource: {
-                        buffer: sceneGPUState.objectsBuffer
-                    }
-                },
-                {
-                    binding: 2,
-                    visibility: GPUShaderStage.COMPUTE,
-                    resource: {
-                        buffer: sceneGPUState.meshBVHBuffer
-                    }
-                },
-                {
-                    binding: 3,
-                    visibility: GPUShaderStage.COMPUTE,
-                    resource: {
-                        buffer: sceneGPUState.meshTriBuffer
-                    }
+                device.queue.writeBuffer(materialBuffer, 0, cpuMaterialBuffer, 0)
+            }
+
+            {// put together the light buffer
+                const cpuLightBuffer = new ArrayBuffer(lights.length * 128)
+
+                for (var x = 0; x < lights.length; x++) {
+                    copyIntoBuffer(lights[x].buffer, cpuLightBuffer, x * 128)
                 }
-            ]
-        })
 
-        sceneBindGroupInfo = {
-            bindGroup: BG,
-            bindGroupLayout: BG_LAYOUT
+                device.queue.writeBuffer(lightBuffer, 0, cpuLightBuffer, 0)
+            }
+
+            const BG = device.createBindGroup({
+                layout: BG_LAYOUT,
+                entries: [
+                    {
+                        binding: 0,
+                        visibility: GPUShaderStage.COMPUTE,
+                        resource: {
+                            buffer: materialBuffer
+                        }
+                    },
+                    {
+                        binding: 1,
+                        visibility: GPUShaderStage.COMPUTE,
+                        resource: {
+                            buffer: lightBuffer
+                        }
+                    }
+                ]
+            })
+
+            materialBindGroupInfo = {
+                bindGroupLayout: BG_LAYOUT,
+                bindGroup: BG
+            }
+        }
+    }
+
+    function addMaterial(type, descriptor) {
+        switch (type) {
+            case "lambert_diffuse":
+                {
+                    let r = descriptor.color && descriptor.color.r ? descriptor.color.r : 0.
+                    let g = descriptor.color && descriptor.color.g ? descriptor.color.g : 0.
+                    let b = descriptor.color && descriptor.color.b ? descriptor.color.b : 0.
+
+
+                    const buffer = new ArrayBuffer(64)
+                    const dataView = new DataView(buffer)
+
+                    dataView.setInt32  (0 , 1, true)
+                    dataView.setFloat32(4 , r, true)
+                    dataView.setFloat32(8 , g, true)
+                    dataView.setFloat32(12, b, true) 
+
+                    let idx = materials.length
+                    materials[idx] = { buffer }
+                    return idx
+                }
+            case "mirror":
+                {
+                    let r = descriptor.color && descriptor.color.r ? descriptor.color.r : 0.
+                    let g = descriptor.color && descriptor.color.g ? descriptor.color.g : 0.
+                    let b = descriptor.color && descriptor.color.b ? descriptor.color.b : 0.
+
+
+                    const buffer = new ArrayBuffer(64)
+                    const dataView = new DataView(buffer)
+
+                    dataView.setInt32  (0 , 2, true)
+                    dataView.setFloat32(4 , r, true)
+                    dataView.setFloat32(8 , g, true)
+                    dataView.setFloat32(12, b, true)
+
+                    let idx = materials.length
+                    materials[idx] = { buffer }
+                    return idx
+                }
+            default:
+                console.error("ERROR in scene::addMaterial: unknown light type [ ", type, " ]") 
+        }
+    }
+
+    function addLight(type, descriptor) {
+        switch (type) {
+            case "rectangle":
+                let position = [
+                    descriptor.position && descriptor.position.x ? descriptor.position.x : 0.,
+                    descriptor.position && descriptor.position.y ? descriptor.position.y : 0.,
+                    descriptor.position && descriptor.position.z ? descriptor.position.z : 0.
+                ]
+                let target = [
+                    descriptor.target && descriptor.target.x != null ? descriptor.target.x : position[0],
+                    descriptor.target && descriptor.target.y != null ? descriptor.target.y : position[1],
+                    descriptor.target && descriptor.target.z != null ? descriptor.target.z : position[2]
+                ]
+                let forward = [
+                    target[0] - position[0], 
+                    target[1] - position[1], 
+                    target[2] - position[2]
+                ]
+                let length = Math.sqrt(forward[0] * forward[0] + forward[1] * forward[1] + forward[2] * forward[2])
+                if (length == 0.) {
+                    forward = [0., 0., -1.]
+                } else {
+                    forward[0] /= length
+                    forward[1] /= length
+                    forward[2] /= length
+                }
+
+                let zProjLength = Math.sqrt(forward[0] * forward[0] + forward[1] * forward[1])
+
+                let xTheta = Math.acos(-forward[2])
+                let zTheta = forward[0] < 0. ? Math.acos(forward[1] / zProjLength) : -Math.acos(forward[1] / zProjLength)
+
+                let right = [
+                    Math.cos(zTheta - Math.PI * .5),
+                    Math.sin(zTheta - Math.PI * .5),
+                    0.
+                ]
+
+                if (Math.abs(forward[2] + 1.) < 1e-4) {
+                    xTheta = 0.
+                    zTheta = 0.
+                }
+
+                let scale = [
+                    descriptor.scale && descriptor.scale.x && descriptor.scale.x != 0. ? descriptor.scale.x : 1.,
+                    descriptor.scale && descriptor.scale.y && descriptor.scale.y != 0. ? descriptor.scale.y : 1.,
+                ]
+
+                if (loadedCoreMeshes.square == null) {
+                    loadedCoreMeshes.square = registerMesh({ file: getSquareMesh() })
+                }
+
+                instanceMesh(loadedCoreMeshes.square, position, [xTheta, 0, zTheta], [scale[0], scale[1], 1.], 0)
+
+                let le = [
+                    descriptor.le && descriptor.le.r ? descriptor.le.r : 0.,
+                    descriptor.le && descriptor.le.g ? descriptor.le.g : 0.,
+                    descriptor.le && descriptor.le.b ? descriptor.le.b : 0.
+                ]
+
+                {
+                    const buffer = new ArrayBuffer(128)
+                    const dataView = new DataView(buffer)
+
+                    dataView.setInt32  (0 ,     1, true) // load light type
+                    dataView.setFloat32(4 , le[0], true) // load light LE
+                    dataView.setFloat32(8 , le[1], true)
+                    dataView.setFloat32(12, le[2], true) 
+
+                    dataView.setFloat32(16, position[0], true) // load light position
+                    dataView.setFloat32(20, position[1], true)
+                    dataView.setFloat32(24, position[2], true)
+
+                    dataView.setFloat32(32, forward[0], true) // load light forward
+                    dataView.setFloat32(36, forward[1], true)
+                    dataView.setFloat32(40, forward[2], true)
+
+                    dataView.setFloat32(48, right[0], true) // load light right
+                    dataView.setFloat32(52, right[1], true)
+                    dataView.setFloat32(56, right[2], true)
+
+                    dataView.setFloat32(64, scale[0], true) // load scale
+                    dataView.setFloat32(68, scale[1], true)
+
+                    let idx = lights.length
+                    lights[idx] = { buffer }
+                    return idx
+                }
+            default:
+                console.error("ERROR in scene::addLight: unknown light type [ ", type, " ]") 
         }
     }
 
     function getSceneBindGroupInfo() {
         if (sceneBindGroupInfo == null) console.warn("ERROR in scene::getSceneBindGroupInfo: scene has not been built yet")
         return sceneBindGroupInfo
+    }
+
+    function getMaterialBindGroupInfo() {
+        if (materialBindGroupInfo == null) console.warn("ERROR in scene::getMaterialBindGroupInfo: scene has not been built yet")
+        return materialBindGroupInfo
     }
 
     function getHitInfoCode(sceneBufferGroupIndex, noDuplicate) {

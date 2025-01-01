@@ -6,14 +6,15 @@ function initMaterialKernel(params) {
     const SM = device.createShaderModule({
         code: SRC(),
         label: "material shader module"
-    })
+    })    
 
     const PIPELINE = device.createComputePipeline({
         layout: device.createPipelineLayout({
             bindGroupLayouts: [
                 params.bindGroupLayouts.pathState, 
                 params.bindGroupLayouts.queues,
-                params.bindGroupLayouts.scene
+                params.bindGroupLayouts.scene,
+                params.bindGroupLayouts.material
             ]
         }),
         compute: {
@@ -32,6 +33,7 @@ function initMaterialKernel(params) {
         P.setBindGroup(0, params.bindGroups.pathState)
         P.setBindGroup(1, params.bindGroups.queues)
         P.setBindGroup(2, params.bindGroups.scene)
+        P.setBindGroup(3, params.bindGroups.material)
         P.dispatchWorkgroups(Math.ceil(params.numPaths / WG_SIZE))
         P.end()
 
@@ -50,6 +52,27 @@ function initMaterialKernel(params) {
         @group(1) @binding(0) var<storage, read_write> queues : QueuesStage2;
 
         ${params.scene.kernels.getHitInfoCode(2)}
+
+        struct DescriptorBlock_16 {
+            d0 : vec4i,
+            d1 : vec4i,
+            d2 : vec4i,
+            d3 : vec4i,
+        };
+
+        struct DescriptorBlock_32 {
+            d0 : vec4i,
+            d1 : vec4i,
+            d2 : vec4i,
+            d3 : vec4i,
+            d4 : vec4i,
+            d5 : vec4i,
+            d6 : vec4i,
+            d7 : vec4i
+        };
+
+        @group(3) @binding(0) var<uniform> material_info : array<DescriptorBlock_16, 128>;
+        @group(3) @binding(1) var<uniform> light_info    : array<DescriptorBlock_32, 128>;
 
         const Pi      = 3.14159265358979323846;
         const InvPi   = 0.31830988618379067154;
@@ -105,6 +128,29 @@ function initMaterialKernel(params) {
             wo : vec3f,
             material_index : i32,
         ) -> vec4f {
+            var material_type : i32 = material_info[material_index].d0[0];
+            material_type = 1;
+            switch(material_type) {
+                case 1: {
+                    var albedo : vec3f = bitcast<vec3f>(
+                        material_info[material_index].d0.yzw
+                    );
+                    return lambert_diffuse_sample_f(wo, wi, random_seed, albedo, flags);
+                }
+                default: {
+                    return vec4f(0., 0., 0., 1.);
+                }
+            }
+        }
+
+        /*
+        fn sample_f(
+            wi : ptr<function, vec3f>,
+            random_seed : ptr<function, f32>,
+            flags : ptr<function, u32>,
+            wo : vec3f,
+            material_index : i32,
+        ) -> vec4f {
             switch(material_index) {
                 case 0: {
                     return lambert_diffuse_sample_f(wo, wi, random_seed, vec3f(.9f), flags);
@@ -116,7 +162,7 @@ function initMaterialKernel(params) {
                     //return lambert_diffuse_sample_f(wo, wi, random_seed, vec3f(.5f, 0.f, 0.f), flags);
                     //return perfect_mirror_sample_f(wo, wi, vec3f(.8), flags);
                     var r2 : vec2f = rand2(*random_seed); *random_seed += 2.f;
-                    return ggxd_sample_f(r2, wo, wi, vec3f(.8), .05);
+                    return ggxd_sample_f(r2, wo, wi, vec3f(.8), .15);
                 }
                 case 3: {
                     return lambert_diffuse_sample_f(wo, wi, random_seed, vec3f(0.f, .5f, 0.f), flags);
@@ -126,6 +172,7 @@ function initMaterialKernel(params) {
                 }
             }
         }
+        */
 
         fn f(
             wo : vec3f,
@@ -142,7 +189,11 @@ function initMaterialKernel(params) {
                 case 2: {
                     //return lambert_diffuse_f(wo, wi, vec3f(.5f, 0.f, 0.f));
                     //return perfect_mirror_f(wo, wi, vec3f(1.f));
-                    return clamp(ggxd_f(wo, wi, vec3f(.8), .05), vec3f(0.), vec3f(1.));
+                    return 
+                        //clamp(
+                            ggxd_f(wo, wi, vec3f(.8), .15)
+                            //, vec3f(0.), vec3f(1.))
+                            ;
                 }
                 case 3: {
                     return lambert_diffuse_f(wo, wi, vec3f(0.f, .5f, 0.f));
@@ -195,27 +246,49 @@ function initMaterialKernel(params) {
                 d = to_world(o1, o2, hit_nor, wi);
 
                 // if this was not a delta material, evaluate direct lighting
-                if ((flags & (1u << 3u)) == 0u) {
+                if ((flags & (1u << 3u)) == 0u && false) {
                     var light_dist : f32;
                     var light_dir : vec3f;
 
-                    var le_pdf : vec4f = area_light_sample_li(
-                        vec3f(0.f, 0.f, 9.999),
-                        vec3f(25.f),
-                        vec3f(0., 0., -1.),
-                        vec3f(0., 1., 0.),
-                        vec2f(2., 2.),
-                        &light_dir,
-                        &light_dist,
-                        hit_pos,
-                        rand2(random_seed)
-                    ); random_seed += 2.f;
+                    var r : f32 = rand2(random_seed).x; random_seed += 2.f;
+
+                    var le_pdf : vec4f;
+
+                    if (r < .5) {
+                        le_pdf = area_light_sample_li(
+                            vec3f(3.f, 0.f, 9.9999),
+                            vec3f(25.f),
+                            vec3f(0., 0., -1.),
+                            vec3f(0., 1., 0.),
+                            vec2f(1., 1.),
+                            &light_dir,
+                            &light_dist,
+                            hit_pos,
+                            rand2(random_seed)
+                        ); random_seed += 2.f;
+                    }
+
+                    if (r >= .5) {
+                        le_pdf = area_light_sample_li(
+                            vec3f(-3.f, 0.f, 9.9999),
+                            vec3f(25.f),
+                            vec3f(0., 0., -1.),
+                            vec3f(0., 1., 0.),
+                            vec2f(1., 1.),
+                            &light_dir,
+                            &light_dist,
+                            hit_pos,
+                            rand2(random_seed)
+                        ); random_seed += 2.f;
+                    }
+
+                    
 
                     var local_light_dir : vec3f = to_local(o1, o2, hit_nor, light_dir);
 
                     var f : vec3f = f(wo, local_light_dir, material_index) * local_light_dir.z;
 
-                    var ld : vec3f = f * le_pdf.xyz / le_pdf.w;
+                    var ld : vec3f = 2. * f * le_pdf.xyz / le_pdf.w;
 
                     if (any(ld > vec3f(0.f))) {
                         var l_idx : i32 = atomicAdd(&wg_stage_3_queue_size[1], 1);

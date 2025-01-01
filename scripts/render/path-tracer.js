@@ -86,7 +86,7 @@ function initPathTracer(params) {
             }
         }
 
-        const bLog = true
+        const bLog = false
 
         if (bLog) console.log("-------")
         {
@@ -230,9 +230,15 @@ function initPathTracer(params) {
 
     function createBindGroups() {
         {// create bind group info for scene
-            const info = params.scene.kernels.getSceneBindGroupInfo()
+            const info = params.scene.getSceneBindGroupInfo()
             bindGroupLayouts.scene = info.bindGroupLayout
             bindGroups.scene = info.bindGroup
+        }
+
+        {// create bind group info for material
+            const info = params.scene.getMaterialBindGroupInfo()
+            bindGroupLayouts.material = info.bindGroupLayout
+            bindGroups.material = info.bindGroup
         }
 
         {// create bind group info for image
