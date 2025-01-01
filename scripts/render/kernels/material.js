@@ -190,34 +190,36 @@ function initMaterialKernel(params) {
 
                 d = to_world(o1, o2, hit_nor, wi);
 
-                // sample direct lighting
-                var light_dist : f32;
-                var light_dir : vec3f;
+                // if this was not a delta material, evaluate direct lighting
+                if ((flags & (1u << 3u)) == 0u) {
+                    var light_dist : f32;
+                    var light_dir : vec3f;
 
-                var le_pdf : vec4f = area_light_sample_li(
-                    vec3f(0.f, 0.f, 9.999),
-                    vec3f(25.f),
-                    vec3f(0., 0., -1.),
-                    vec3f(0., 1., 0.),
-                    vec2f(2., 2.),
-                    &light_dir,
-                    &light_dist,
-                    hit_pos,
-                    rand2(random_seed)
-                ); random_seed += 2.f;
+                    var le_pdf : vec4f = area_light_sample_li(
+                        vec3f(0.f, 0.f, 9.999),
+                        vec3f(25.f),
+                        vec3f(0., 0., -1.),
+                        vec3f(0., 1., 0.),
+                        vec2f(2., 2.),
+                        &light_dir,
+                        &light_dist,
+                        hit_pos,
+                        rand2(random_seed)
+                    ); random_seed += 2.f;
 
-                var local_light_dir : vec3f = to_local(o1, o2, hit_nor, light_dir);
+                    var local_light_dir : vec3f = to_local(o1, o2, hit_nor, light_dir);
 
-                var f : vec3f = f(wo, local_light_dir, material_index) * local_light_dir.z;
+                    var f : vec3f = f(wo, local_light_dir, material_index) * local_light_dir.z;
 
-                var ld : vec3f = f * le_pdf.xyz / le_pdf.w;
+                    var ld : vec3f = f * le_pdf.xyz / le_pdf.w;
 
-                if (any(ld > vec3f(0.f))) {
-                    var l_idx : i32 = atomicAdd(&wg_stage_3_queue_size[1], 1);
-                    wg_any_hit_queue[l_idx] = path_idx;
+                    if (any(ld > vec3f(0.f))) {
+                        var l_idx : i32 = atomicAdd(&wg_stage_3_queue_size[1], 1);
+                        wg_any_hit_queue[l_idx] = path_idx;
 
-                    path_state_2.nee_direction_distance[path_idx] = vec4f(light_dir, light_dist);
-                    path_state_2.nee_ld[path_idx] = vec4f(ld, 3.1415);
+                        path_state_2.nee_direction_distance[path_idx] = vec4f(light_dir, light_dist);
+                        path_state_2.nee_ld[path_idx] = vec4f(ld, 3.1415);
+                    }
                 }
 
                 path_state_1.material_throughput_pdf[path_idx] = brdf_pdf;

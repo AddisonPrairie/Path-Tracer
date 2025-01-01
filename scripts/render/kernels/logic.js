@@ -92,9 +92,20 @@ function initLogicKernel(params) {
 
                     var flags : u32 = path_state_1.flags[path_idx];
 
+                    var b_last_delta_hit : bool = (flags & (1u << 4u)) != 0u;
+                    var b_curr_delta_hit : bool = (flags & (1u << 3u)) != 0u;
+
                     if ((flags & 4u) != 0u) {
                         // then we need to add in a contribution from estimating direct lighting
                         path_contribution += vec4f(path_throughput * vec3f(path_state_2.nee_ld[path_idx].xyz), 0.f);
+                    }
+
+                    if ((flags & 2u) != 0u) {
+                        // then an emissive hit occured
+                        if (num_bounces == 1 || b_last_delta_hit) {
+                            path_contribution += vec4f(path_throughput * path_state_1.material_throughput_pdf[path_idx].xyz, 0.f);
+                        }
+                        path_throughput = vec3f(0.f);
                     }
 
                     if ((flags & 1u) != 0u) {
@@ -112,14 +123,6 @@ function initLogicKernel(params) {
                                 path_throughput = path_throughput / (1.f - q);
                             }
                         }
-                    }
-
-                    if ((flags & 2u) != 0u) {
-                        // then an emissive hit occured
-                        if (num_bounces == 1) {
-                            path_contribution += vec4f(path_throughput * path_state_1.material_throughput_pdf[path_idx].xyz, 0.f);
-                        }
-                        path_throughput = vec3f(0.f);
                     }
 
                     if (num_bounces > 20) {
@@ -151,9 +154,16 @@ function initLogicKernel(params) {
                         num_bounces += 1;
                     }
 
+                    // compute flags for next iteration
+                    var next_flags : u32 = 0u;
+                    if (b_curr_delta_hit) {
+                        next_flags |= 1u << 4u;
+                    }
+
+                    // write all variables back to global memory
                     path_state_1.path_throughput[path_idx] = path_throughput;
                     path_state_1.num_bounces[path_idx] = num_bounces;
-                    path_state_1.flags[path_idx] = 0u;
+                    path_state_1.flags[path_idx] = next_flags;
 
                     // add light accumulation to image
                     if (any(path_contribution != vec4f(0.f))) {
@@ -194,6 +204,7 @@ function initLogicKernel(params) {
                 } else {
                     path_state_1.pixel_index[path_idx] = (new_pixel_index) % (uniforms.image_size.x * uniforms.image_size.y);
                     path_state_1.samples_in_pixel[path_idx] = 0;
+                    path_state_1.flags[path_idx] = 0u;
                 }
             }
 

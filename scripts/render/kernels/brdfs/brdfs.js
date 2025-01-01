@@ -30,6 +30,7 @@ function getPerfectMirrorBRDF() {
         flags : ptr<function, u32>
     ) -> vec4f {
         *wi = wo * vec3f(-1.f, -1.f, 1.f);
+        *flags |= 1u << 3u;
         return vec4f(pow(albedo, vec3f(2.2)), 1.f);
     }
 

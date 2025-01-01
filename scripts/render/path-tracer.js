@@ -173,6 +173,8 @@ function initPathTracer(params) {
              * 1 <<  0 : material evaluation
              * 1 <<  1 : emissive material evaluation
              * 1 <<  2 : NEE sample is unoccluded
+             * 1 <<  3 : current delta material evaluation
+             * 1 <<  4 : last bounce delta material evaluation
              */
         };
 
