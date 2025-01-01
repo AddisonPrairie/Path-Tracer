@@ -19,15 +19,15 @@ window.onload = async () => {
     scene.registerMesh({ file: cubeFile })
     scene.registerMesh({ file: floorFile })
     
-    scene.instanceMesh(0, [0, 0, 3.5], [Math.PI / 2, 0, 0], [9, 9, 9], 0)
-    scene.instanceMesh(0, [-3, 3, 2.9], [Math.PI / 2, 0, 0], [7, 7, 7], 0)
+    scene.instanceMesh(0, [0, 0, 3.5], [Math.PI / 2, 0, 0], [9, 9, 9], 2)
+    scene.instanceMesh(0, [-3, 3, 2.9], [Math.PI / 2, 0, 0], [7, 7, 7], 2)
 
 
     scene.instanceMesh(1, [ 0,  0,  0], [0, 0, 0], [.5, .5, .5], 0)
     scene.instanceMesh(1, [ 0,  0, 10], [0, 0, 0], [.5, .5, .5], 0)
     scene.instanceMesh(1, [ 0, -5,  5], [Math.PI / 2, 0, 0], [.5, .5, .5], 0)
     scene.instanceMesh(1, [-5,  0,  5], [0, Math.PI / 2, 0], [.5, .5, .5], 3)
-    scene.instanceMesh(1, [ 5,  0,  5], [0, Math.PI / 2, 0], [.5, .5, .5], 2)
+    scene.instanceMesh(1, [ 5,  0,  5], [0, Math.PI / 2, 0], [.5, .5, .5], 3)
 
     scene.instanceMesh(1, [0, 0, 9.999], [0, 0, 0], [.2, .2, .2], 1)
 
@@ -36,7 +36,7 @@ window.onload = async () => {
 
     await scene.build()
 
-    const {w, h} = {w:512, h:512}
+    const {w, h} = {w:1024, h:1024}
 
     const pt = initPathTracer({ 
         device, scene,
@@ -49,7 +49,7 @@ window.onload = async () => {
             fov: 45
         },
         settings: {
-            samples: 1024
+            samples: 4096
         }
     })
 

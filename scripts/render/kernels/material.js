@@ -66,6 +66,7 @@ function initMaterialKernel(params) {
         ${getLambertDiffuseBRDF()}
         ${getEmissiveBRDF()}
         ${getPerfectMirrorBRDF()}
+        ${getRoughMirrorBRDF()}
 
         
         fn area_light_sample_li(
@@ -113,7 +114,9 @@ function initMaterialKernel(params) {
                 }
                 case 2: {
                     //return lambert_diffuse_sample_f(wo, wi, random_seed, vec3f(.5f, 0.f, 0.f), flags);
-                    return perfect_mirror_sample_f(wo, wi, vec3f(.8), flags);
+                    //return perfect_mirror_sample_f(wo, wi, vec3f(.8), flags);
+                    var r2 : vec2f = rand2(*random_seed); *random_seed += 2.f;
+                    return ggxd_sample_f(r2, wo, wi, vec3f(.8), .05);
                 }
                 case 3: {
                     return lambert_diffuse_sample_f(wo, wi, random_seed, vec3f(0.f, .5f, 0.f), flags);
@@ -138,7 +141,8 @@ function initMaterialKernel(params) {
                 }
                 case 2: {
                     //return lambert_diffuse_f(wo, wi, vec3f(.5f, 0.f, 0.f));
-                    return perfect_mirror_f(wo, wi, vec3f(1.f));
+                    //return perfect_mirror_f(wo, wi, vec3f(1.f));
+                    return clamp(ggxd_f(wo, wi, vec3f(.8), .05), vec3f(0.), vec3f(1.));
                 }
                 case 3: {
                     return lambert_diffuse_f(wo, wi, vec3f(0.f, .5f, 0.f));
