@@ -77,6 +77,8 @@ function initPathTracer(params) {
             dataView.setFloat32(36, params.camera.lookAt[1], true)
             dataView.setFloat32(40, params.camera.lookAt[2], true)
 
+            dataView.setInt32(44, params.scene.getLightCount(), true)
+
             device.queue.writeBuffer(buffers.uniforms, 0, uniformBuffer, 0)
         }
 
@@ -184,14 +186,13 @@ function initPathTracer(params) {
         };
         
         struct Uniforms {
-            image_size : vec2i, // > 8 bytes
-
+            image_size : vec2i,      // 0  > 8  bytes
             // != 0 iff this is the first time everything is executed
-            first_sample : i32, // > 12 bytes
-            
-            camera_fov : f32, // > 16 bytes
-            camera_position : vec3f, // > 32 bytes
-            camera_look_at  : vec3f, // > 48 bytes
+            first_sample : i32,      // 8  > 12 bytes
+            camera_fov : f32,        // 12 > 16 bytes
+            camera_position : vec3f, // 16 > 28 bytes
+            camera_look_at  : vec3f, // 32 > 44 bytes
+            num_lights : i32,        // 44 > 48 bytes
         };
         
         struct QueuesStage1 {
@@ -302,7 +303,7 @@ function initPathTracer(params) {
 
             buffers.uniforms = device.createBuffer({
                 size: 64,
-                usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+                usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC
             })
 
             buffers.pathState1 = device.createBuffer({

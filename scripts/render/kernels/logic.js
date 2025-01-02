@@ -130,7 +130,7 @@ function initLogicKernel(params) {
                     }
 
                     if (!b_hit) {
-                        path_contribution += vec4f(1.f * path_throughput, 0.f);
+                        path_contribution += vec4f(0.f * path_throughput, 0.f);
                         path_throughput = vec3f(0.f);
                     }
 

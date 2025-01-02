@@ -17,7 +17,7 @@ function initScene(device) {
         "square" : null,
     }
 
-    return { registerMesh, instanceMesh, build, addLight, addMaterial, getSceneBindGroupInfo, getMaterialBindGroupInfo, kernels: { getNearestHitCode, getAnyHitCode, getHitInfoCode } }
+    return { registerMesh, instanceMesh, build, addLight, addMaterial, getSceneBindGroupInfo, getMaterialBindGroupInfo, getLightCount, kernels: { getNearestHitCode, getAnyHitCode, getHitInfoCode } }
 
     async function build() {
         {
@@ -279,6 +279,44 @@ function initScene(device) {
                     materials[idx] = { buffer }
                     return idx
                 }
+            case "ggx_smith":
+                {
+                    let r = descriptor.color && descriptor.color.r ? descriptor.color.r : 0.
+                    let g = descriptor.color && descriptor.color.g ? descriptor.color.g : 0.
+                    let b = descriptor.color && descriptor.color.b ? descriptor.color.b : 0.
+                    let roughness = descriptor.roughness ? Math.min(Math.max(.0001, descriptor.roughness), 1.) : .1
+
+                    const buffer = new ArrayBuffer(64)
+                    const dataView = new DataView(buffer)
+
+                    dataView.setInt32  (0 , 3, true)
+                    dataView.setFloat32(4 , r, true)
+                    dataView.setFloat32(8 , g, true)
+                    dataView.setFloat32(12, b, true)
+                    dataView.setFloat32(16, roughness, true)
+
+                    let idx = materials.length
+                    materials[idx] = { buffer }
+                    return idx
+                }
+            case "emissive":
+                {
+                    let r = descriptor.le && descriptor.le.r ? descriptor.le.r : 0.
+                    let g = descriptor.le && descriptor.le.g ? descriptor.le.g : 0.
+                    let b = descriptor.le && descriptor.le.b ? descriptor.le.b : 0.
+
+                    const buffer = new ArrayBuffer(64)
+                    const dataView = new DataView(buffer)
+
+                    dataView.setInt32  (0 , 4, true)
+                    dataView.setFloat32(4 , r, true)
+                    dataView.setFloat32(8 , g, true)
+                    dataView.setFloat32(12, b, true)
+
+                    let idx = materials.length
+                    materials[idx] = { buffer }
+                    return idx
+                }
             default:
                 console.error("ERROR in scene::addMaterial: unknown light type [ ", type, " ]") 
         }
@@ -325,6 +363,8 @@ function initScene(device) {
                 if (Math.abs(forward[2] + 1.) < 1e-4) {
                     xTheta = 0.
                     zTheta = 0.
+
+                    right = [1, 0, 0]
                 }
 
                 let scale = [
@@ -336,13 +376,14 @@ function initScene(device) {
                     loadedCoreMeshes.square = registerMesh({ file: getSquareMesh() })
                 }
 
-                instanceMesh(loadedCoreMeshes.square, position, [xTheta, 0, zTheta], [scale[0], scale[1], 1.], 0)
-
                 let le = [
                     descriptor.le && descriptor.le.r ? descriptor.le.r : 0.,
                     descriptor.le && descriptor.le.g ? descriptor.le.g : 0.,
                     descriptor.le && descriptor.le.b ? descriptor.le.b : 0.
                 ]
+
+                let matIndex = addMaterial("emissive", {le: {r: le[0], g: le[1], b: le[2]}})
+                instanceMesh(loadedCoreMeshes.square, position, [xTheta, 0, zTheta], [scale[0], scale[1], 1.], matIndex)
 
                 {
                     const buffer = new ArrayBuffer(128)
@@ -385,6 +426,10 @@ function initScene(device) {
     function getMaterialBindGroupInfo() {
         if (materialBindGroupInfo == null) console.warn("ERROR in scene::getMaterialBindGroupInfo: scene has not been built yet")
         return materialBindGroupInfo
+    }
+
+    function getLightCount() {
+        return lights.length
     }
 
     function getHitInfoCode(sceneBufferGroupIndex, noDuplicate) {

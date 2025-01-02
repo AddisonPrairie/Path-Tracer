@@ -98,7 +98,7 @@ function initMaterialKernel(params) {
             light_for : vec3f,
             light_right : vec3f,
             light_scale : vec2f,
-            wi : ptr<function, vec3f>,
+            dir : ptr<function, vec3f>,
             dist : ptr<function, f32>,
             o : vec3f,
             r2 : vec2f,
@@ -113,12 +113,69 @@ function initMaterialKernel(params) {
             var light_dist : f32 = length(del_pos);
 
             // calculate outgoing direction and pdf
-            *wi = del_pos / light_dist;
-            var local_pdf : f32 = light_dist * light_dist / (area * abs(dot(light_for, *wi)));
+            *dir = del_pos / light_dist;
+            var local_pdf : f32 = light_dist * light_dist / (area * abs(dot(light_for, *dir)));
 
             *dist = light_dist;
 
             return vec4f(light_le, local_pdf);
+        }
+
+        fn estimate_direct(
+            light_dir : ptr<function, vec3f>,
+            light_dist : ptr<function, f32>,
+            hit_pos : vec3f,
+            random_seed : ptr<function, f32>
+        ) -> vec4f {
+            // randomly choose a light to sample
+            var r1 : f32 = rand2(*random_seed).x; *random_seed += 2.f;
+            var light_index : i32 = i32(floor(r1 * f32(uniforms.num_lights)));
+
+            // fetch lighting information
+            var light_type : i32 = light_info[light_index].d0[0];
+
+            // randomness used by the individual light
+            var r2 : vec2f = rand2(*random_seed); *random_seed += 2.f;
+
+            switch(light_type) {
+                case 1: {
+
+                    
+
+
+
+                    var light_le : vec3f = bitcast<vec3f>(
+                        light_info[light_index].d0.yzw
+                    );
+                    var light_o : vec3f = bitcast<vec3f>(
+                        light_info[light_index].d1.xyz
+                    );
+                    var light_for : vec3f = bitcast<vec3f>(
+                        light_info[light_index].d2.xyz
+                    );
+                    var light_right : vec3f = bitcast<vec3f>(
+                        light_info[light_index].d3.xyz
+                    );
+                    var light_scale : vec2f = bitcast<vec2f>(
+                        light_info[light_index].d4.xy
+                    );
+
+                    return vec4f(vec3f(f32(uniforms.num_lights)), 1.) * area_light_sample_li(
+                        light_o,
+                        light_le,
+                        light_for,
+                        light_right,
+                        light_scale,
+                        light_dir,
+                        light_dist,
+                        hit_pos,
+                        r2
+                    );
+                }
+                default: {
+                    return vec4f(0.);
+                }
+            }
         }
 
         fn sample_f(
@@ -129,7 +186,7 @@ function initMaterialKernel(params) {
             material_index : i32,
         ) -> vec4f {
             var material_type : i32 = material_info[material_index].d0[0];
-            material_type = 1;
+
             switch(material_type) {
                 case 1: {
                     var albedo : vec3f = bitcast<vec3f>(
@@ -137,69 +194,67 @@ function initMaterialKernel(params) {
                     );
                     return lambert_diffuse_sample_f(wo, wi, random_seed, albedo, flags);
                 }
+                case 2: {
+                    var albedo : vec3f = bitcast<vec3f>(
+                        material_info[material_index].d0.yzw
+                    );
+                    return perfect_mirror_sample_f(wo, wi, albedo, flags);
+                }
+                case 3: {
+                    var albedo : vec3f = bitcast<vec3f>(
+                        material_info[material_index].d0.yzw
+                    );
+                    var roughness : f32 = bitcast<f32>(material_info[material_index].d1[0]);
+                    var r2 : vec2f = rand2(*random_seed); *random_seed += 2.f;
+                    return ggx_smith_sample_f(r2, wo, wi, albedo, roughness);
+                }
+                case 4: {
+                    var le : vec3f = bitcast<vec3f>(
+                        material_info[material_index].d0.yzw
+                    );
+                    return emissive_sample_f(wo, wi, random_seed, le, flags);
+                }
                 default: {
                     return vec4f(0., 0., 0., 1.);
                 }
             }
         }
 
-        /*
-        fn sample_f(
-            wi : ptr<function, vec3f>,
-            random_seed : ptr<function, f32>,
-            flags : ptr<function, u32>,
-            wo : vec3f,
-            material_index : i32,
-        ) -> vec4f {
-            switch(material_index) {
-                case 0: {
-                    return lambert_diffuse_sample_f(wo, wi, random_seed, vec3f(.9f), flags);
-                }
-                case 1: {
-                    return emissive_sample_f(wo, wi, random_seed, 25.f * vec3f(1., 1., 0.9), flags);
-                }
-                case 2: {
-                    //return lambert_diffuse_sample_f(wo, wi, random_seed, vec3f(.5f, 0.f, 0.f), flags);
-                    //return perfect_mirror_sample_f(wo, wi, vec3f(.8), flags);
-                    var r2 : vec2f = rand2(*random_seed); *random_seed += 2.f;
-                    return ggxd_sample_f(r2, wo, wi, vec3f(.8), .15);
-                }
-                case 3: {
-                    return lambert_diffuse_sample_f(wo, wi, random_seed, vec3f(0.f, .5f, 0.f), flags);
-                }
-                default: {
-                    return vec4f(0.f);
-                }
-            }
-        }
-        */
-
         fn f(
             wo : vec3f,
             wi : vec3f,
-            material_index : i32
+            material_index : i32,
         ) -> vec3f {
-            switch(material_index) {
-                case 0: {
-                    return lambert_diffuse_f(wo, wi, vec3f(.9f));
-                }
+            var material_type : i32 = material_info[material_index].d0[0];
+
+            switch(material_type) {
                 case 1: {
-                    return emissive_f(wo, wi, 25.f * vec3f(1., 1., 0.9));
+                    var albedo : vec3f = bitcast<vec3f>(
+                        material_info[material_index].d0.yzw
+                    );
+                    return lambert_diffuse_f(wo, wi, albedo);
                 }
                 case 2: {
-                    //return lambert_diffuse_f(wo, wi, vec3f(.5f, 0.f, 0.f));
-                    //return perfect_mirror_f(wo, wi, vec3f(1.f));
-                    return 
-                        //clamp(
-                            ggxd_f(wo, wi, vec3f(.8), .15)
-                            //, vec3f(0.), vec3f(1.))
-                            ;
+                    var albedo : vec3f = bitcast<vec3f>(
+                        material_info[material_index].d0.yzw
+                    );
+                    return perfect_mirror_f(wo, wi, albedo);
                 }
                 case 3: {
-                    return lambert_diffuse_f(wo, wi, vec3f(0.f, .5f, 0.f));
+                    var albedo : vec3f = bitcast<vec3f>(
+                        material_info[material_index].d0.yzw
+                    );
+                    var roughness : f32 = bitcast<f32>(material_info[material_index].d1[0]);
+                    return ggx_smith_f(wo, wi, albedo, roughness);
+                }
+                case 4: {
+                    var le : vec3f = bitcast<vec3f>(
+                        material_info[material_index].d0.yzw
+                    );
+                    return emissive_f(wo, wi, le);
                 }
                 default: {
-                    return vec3f(0.f);
+                    return vec3f(0., 0., 0.);
                 }
             }
         }
@@ -246,43 +301,11 @@ function initMaterialKernel(params) {
                 d = to_world(o1, o2, hit_nor, wi);
 
                 // if this was not a delta material, evaluate direct lighting
-                if ((flags & (1u << 3u)) == 0u && false) {
+                if ((flags & (1u << 3u)) == 0u) {
                     var light_dist : f32;
                     var light_dir : vec3f;
 
-                    var r : f32 = rand2(random_seed).x; random_seed += 2.f;
-
-                    var le_pdf : vec4f;
-
-                    if (r < .5) {
-                        le_pdf = area_light_sample_li(
-                            vec3f(3.f, 0.f, 9.9999),
-                            vec3f(25.f),
-                            vec3f(0., 0., -1.),
-                            vec3f(0., 1., 0.),
-                            vec2f(1., 1.),
-                            &light_dir,
-                            &light_dist,
-                            hit_pos,
-                            rand2(random_seed)
-                        ); random_seed += 2.f;
-                    }
-
-                    if (r >= .5) {
-                        le_pdf = area_light_sample_li(
-                            vec3f(-3.f, 0.f, 9.9999),
-                            vec3f(25.f),
-                            vec3f(0., 0., -1.),
-                            vec3f(0., 1., 0.),
-                            vec2f(1., 1.),
-                            &light_dir,
-                            &light_dist,
-                            hit_pos,
-                            rand2(random_seed)
-                        ); random_seed += 2.f;
-                    }
-
-                    
+                    var le_pdf : vec4f = estimate_direct(&light_dir, &light_dist, hit_pos, &random_seed);
 
                     var local_light_dir : vec3f = to_local(o1, o2, hit_nor, light_dir);
 

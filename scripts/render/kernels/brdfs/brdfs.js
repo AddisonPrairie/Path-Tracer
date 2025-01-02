@@ -104,7 +104,7 @@ function getRoughMirrorBRDF() {
         return normalize(n * vec3f(roughness, roughness, 1.f));
     }
 
-    fn ggxd_sample_f(
+    fn ggx_smith_sample_f(
         r2 : vec2f,
         wo : vec3f,
         wi : ptr<function, vec3f>,
@@ -132,7 +132,7 @@ function getRoughMirrorBRDF() {
         }
     }
 
-    fn ggxd_f(
+    fn ggx_smith_f(
         wo : vec3f,
         wi : vec3f,
         albedo : vec3f,
@@ -146,81 +146,7 @@ function getRoughMirrorBRDF() {
         var D : f32 = ggx_d(wm, a2);
 
         return F * G2 * D / (4.f * abs(wi.z) * abs(wo.z));
-    }
-
-    /*
-    
-    fn ggx_sample_wm(wo : vec3f, u : vec2f, roughness : f32) -> vec3f {
-        var v : vec3f = normalize(wo * vec3f(roughness, roughness, 1.));
-
-        var lensq : f32 = dot(v.xy, v.xy);
-        var o1 : vec3f;
-        if (lensq > 0.) {
-            o1 = normalize(vec3f(-v.y, v.x, 0.));
-        } else {
-            o1 = vec3f(1., 0., 0.);
-        }
-        var o2 : vec3f = cross(v, o1);
-
-        var r : f32 = sqrt(u.x);
-        var phi : f32 = 2. * Pi * u.y;
-
-        var t1 = r * cos(phi);
-        var t2 = r * sin(phi);
-
-        //var s = .5 * (1. + v.z);
-        //t2 = (1. - s) * sqrt(1. - t1 * t1) + s * t2;
-
-        var n : vec3f = t1 * o1 + t2 * o2 + sqrt(max(0., 1. - t1 * t1 - t2 * t2)) * v;
-
-        return normalize(vec3f(n.x, n.y, max(n.z, 0.)) * vec3f(roughness, roughness, 1.));
-    }
-
-    fn ggx_sample_f(
-        wo : vec3f, 
-        wi : ptr<function, vec3f>, 
-        seed : ptr<function, f32>, 
-        albedo : vec3f,
-        roughness : f32,
-        flags : ptr<function, u32>
-    ) -> vec4f {
-        var hw : vec3f = ggx_sample_wm(wo, rand2(*seed), roughness); *seed += 2.f;
-        *wi = reflect(-wo, hw);
-
-        var refl : vec3f = vec3f(0.f);
-        var  pdf :   f32 = ggx_pdf(wo, hw, roughness) / (4.f * dot(hw, wo));
-
-
-        var G : f32 = 1.f / (1.f + ggx_lambda(wo, roughness) + ggx_lambda(*wi, roughness));
-        var F : f32 = 1.f;
-        refl = pow(albedo, vec3f(2.2)) * F * G / ggx_G1(wo, roughness);
-
-        if (any(refl != refl) || pdf != pdf || (*wi).z <= 0.) {refl = vec3f(0.);}
-
-        return vec4f(refl, pdf);
-    }
-
-    fn ggx_G1(v : vec3f, roughness : f32) -> f32 {
-        return 2. / (1. + sqrt(1. + roughness * roughness * dot(v.xy, v.xy) / (v.z * v.z)));
-    }
-
-    fn ggx_pdf(v : vec3f, n : vec3f, roughness : f32) -> f32 {
-        return ggx_G1(v, roughness) * max(0., dot(v, n)) * ggx_D(n, roughness) / v.z;
-    }
-
-    fn ggx_lambda(w : vec3f, alpha : f32) -> f32 {
-        var tan2_theta : f32 = (1.0 - w.z * w.z) / (w.z * w.z);
-        return (sqrt(1 + alpha * alpha * tan2_theta) - 1.f) / 2.f;
-    }
-
-    fn ggx_D(n : vec3f, roughness : f32) -> f32 {
-        var a2 : f32 = roughness * roughness;
-        var denom : f32 = (dot(n.xy, n.xy) / a2 + n.z * n.z);
-
-        return 1. / (Pi * a2 * denom * denom);
-    }
-        
-    */`
+    }`
 }
 
 function getPerfectMirrorBRDF() {
