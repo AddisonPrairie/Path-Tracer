@@ -37,8 +37,8 @@ window.onload = async () => {
     scene.instanceMesh(floorModel, [ 0, -5,  5], [Math.PI / 2, 0, 0], [5, 5, 5], ggxSmith)
 
     scene.addLight("rectangle", {
-        position: {x: 0, y: 0, z: 3},
-        target: {x: 10, y: 0, z: 0},
+        position: {x: 0, y: 0, z: 9.999},
+        target: {x: 0, y: 0, z: 0},
         scale: {x: 1.5, y: 1.5},
         le: {r: 25, g: 25, b: 15}
     })
