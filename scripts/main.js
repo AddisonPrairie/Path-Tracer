@@ -16,6 +16,8 @@ window.onload = async () => {
 
     const t0 = Date.now()
 
+    const hdri = await fetchHdr("media/qwantani_dusk_1_2k.hdr")
+
     const cubeModel = scene.registerMesh({ file: cubeFile })
     const floorModel = scene.registerMesh({ file: floorFile })
     const buddhaModel = scene.registerMesh({ file: buddhaFile })

@@ -17,7 +17,22 @@ function initScene(device) {
         "square" : null,
     }
 
-    return { registerMesh, instanceMesh, build, addLight, addMaterial, getSceneBindGroupInfo, getMaterialBindGroupInfo, getLightCount, kernels: { getNearestHitCode, getAnyHitCode, getHitInfoCode } }
+    return { 
+        registerMesh, 
+        instanceMesh, 
+        build, 
+        addLight, 
+        addMaterial, 
+        getSceneBindGroupInfo, 
+        getMaterialBindGroupInfo, 
+        getLightCount,
+        setEnvironmentLight,
+        kernels: { 
+            getNearestHitCode, 
+            getAnyHitCode, 
+            getHitInfoCode 
+        } 
+    }
 
     async function build() {
         {
@@ -416,6 +431,10 @@ function initScene(device) {
             default:
                 console.error("ERROR in scene::addLight: unknown light type [ ", type, " ]") 
         }
+    }
+
+    function setEnvironmentLight(type, info) {
+
     }
 
     function getSceneBindGroupInfo() {
