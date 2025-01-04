@@ -10,13 +10,20 @@ function initLogicKernel(params) {
         label: "logic shader module"
     })
 
+    // NOTE: bind groups differ slightly if an un-(direct sampled) HDR environment light is used
+    const BG_LAYOUTS = [
+        params.bindGroupLayouts.pathState, 
+        params.bindGroupLayouts.queues,
+        params.bindGroupLayouts.image
+    ]
+
+    if (params.scene.getEnvironmentLightInfo().type === "hdr") {
+        BG_LAYOUTS.push(params.scene.getEnvironmentLightInfo().bindGroupLayout)
+    }
+
     const PIPELINE = device.createComputePipeline({
         layout: device.createPipelineLayout({
-            bindGroupLayouts: [
-                params.bindGroupLayouts.pathState, 
-                params.bindGroupLayouts.queues,
-                params.bindGroupLayouts.image
-            ]
+            bindGroupLayouts: BG_LAYOUTS
         }),
         compute: {
             module: SM,
@@ -34,6 +41,9 @@ function initLogicKernel(params) {
         P.setBindGroup(0, params.bindGroups.pathState)
         P.setBindGroup(1, params.bindGroups.queues)
         P.setBindGroup(2, params.bindGroups.image)
+        if (params.scene.getEnvironmentLightInfo().type === "hdr") {
+            P.setBindGroup(3, params.scene.getEnvironmentLightInfo().bindGroup)
+        }
         P.dispatchWorkgroups(Math.ceil(params.numPaths / WG_SIZE))
         P.end()
 
@@ -53,12 +63,23 @@ function initLogicKernel(params) {
 
         @group(2) @binding(0) var<storage, read_write> image : array<atomic<i32>>;
 
+        ${params.scene.getEnvironmentLightInfo().getCode(3)}
+
         var<workgroup> wg_stage_2_queue_size : array<atomic<i32>, 2>;
 
         var<workgroup> wg_camera_queue : array<i32, ${WG_SIZE}>;
         var<workgroup> wg_material_queue : array<i32, ${WG_SIZE}>;
 
         var<workgroup> num_new_pixel_index : atomic<i32>;
+
+        const Pi      = 3.14159265358979323846;
+        const InvPi   = 0.31830988618379067154;
+        const Inv2Pi  = 0.15915494309189533577;
+        const Inv4Pi  = 0.07957747154594766788;
+        const PiOver2 = 1.57079632679489661923;
+        const PiOver4 = 0.78539816339744830961;
+        const Sqrt2   = 1.41421356237309504880;
+
 
         @compute @workgroup_size(${WG_SIZE})
         fn main(@builtin(global_invocation_id) global_id : vec3u, @builtin(local_invocation_id) local_id : vec3u) {
@@ -130,7 +151,8 @@ function initLogicKernel(params) {
                     }
 
                     if (!b_hit) {
-                        path_contribution += vec4f(0.f * path_throughput, 0.f);
+                        path_contribution += vec4f(
+                            environment_light_le(path_state_1.path_d[path_idx]) * path_throughput, 0.f);
                         path_throughput = vec3f(0.f);
                     }
 

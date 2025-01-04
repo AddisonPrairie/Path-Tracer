@@ -20,7 +20,8 @@ function initPathTracer(params) {
         samples: params.settings.samples,
         imageWidth: params.image.width,
         imageHeight: params.image.height,
-        sharedStructCode: SHARED_STRUCTS_CODE()
+        sharedStructCode: SHARED_STRUCTS_CODE(),
+        scene: params.scene
     })
 
     const cameraKernel = initCameraKernel({

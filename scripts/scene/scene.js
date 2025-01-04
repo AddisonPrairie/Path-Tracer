@@ -7,11 +7,13 @@ function initScene(device) {
     let objects = []
     let lights = []
     let materials = []
+    let environmentLight = { type: "constant", color: {r: 0, g: 0, b: 0} }
 
     // internal state
     let sceneGPUState = null
     let sceneBindGroupInfo = null
     let materialBindGroupInfo = null
+    let environmentLightInfo = null
 
     let loadedCoreMeshes = {
         "square" : null,
@@ -23,10 +25,11 @@ function initScene(device) {
         build, 
         addLight, 
         addMaterial, 
+        setEnvironmentLight,
         getSceneBindGroupInfo, 
         getMaterialBindGroupInfo, 
+        getEnvironmentLightInfo,
         getLightCount,
-        setEnvironmentLight,
         kernels: { 
             getNearestHitCode, 
             getAnyHitCode, 
@@ -35,7 +38,7 @@ function initScene(device) {
     }
 
     async function build() {
-        {
+        { // mesh information
             // build BVHs for all meshes included in the scene
             let utilizedMeshOrder = {}
             for (var i = 0; i < objects.length; i++) {
@@ -168,7 +171,7 @@ function initScene(device) {
             }
         }
 
-        {
+        { // build material and light information
             const BG_LAYOUT = device.createBindGroupLayout({
                 entries: [
                     {
@@ -250,6 +253,116 @@ function initScene(device) {
             materialBindGroupInfo = {
                 bindGroupLayout: BG_LAYOUT,
                 bindGroup: BG
+            }
+        }
+
+        { // build environment light information
+            switch (environmentLight.type) {
+                case "constant":
+                    environmentLightInfo = {
+                        type: "constant",
+                        getCode : () => {
+                            return /* wgsl */ `
+                            fn environment_light_le(d : vec3f) -> vec3f {
+                                return vec3f(
+                                    f32(${environmentLight.color.r}),
+                                    f32(${environmentLight.color.g}),
+                                    f32(${environmentLight.color.b})
+                                );
+                            }`
+                        }
+                    }
+                    break
+                case "hdr":
+                    const parsedHdr = await parseHdr(environmentLight.buffer)
+
+                    const texture = device.createTexture({
+                        size: parsedHdr.shape,
+                        format: "rgba32float",
+                        usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST
+                    })
+
+                    const buffer = device.createBuffer({
+                        size: 64,
+                        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+                    })
+
+                    device.queue.writeTexture(
+                        { texture: texture },
+                        parsedHdr.data,
+                        { bytesPerRow: parsedHdr.shape[0] * 16 },
+                        { width: parsedHdr.shape[0], height: parsedHdr.shape[1] }
+                    )
+
+                    device.queue.writeBuffer(
+                        buffer,
+                        0,
+                        new Int32Array([parsedHdr.shape[0], parsedHdr.shape[1]])
+                    )
+
+                    const BG_LAYOUT = device.createBindGroupLayout({
+                        label: "environment leight bind group",
+                        entries: [
+                            {
+                                binding: 0,
+                                visibility: GPUShaderStage.COMPUTE,
+                                buffer: {
+                                    type: "uniform"
+                                }
+                            },
+                            {
+                                binding: 1,
+                                visibility: GPUShaderStage.COMPUTE,
+                                texture: {
+                                    sampleType: "unfilterable-float",
+                                    viewDimension: "2d",
+                                    multisampled: false
+                                }
+                            }
+                        ]
+                    })
+
+                    const BG = device.createBindGroup({
+                        layout: BG_LAYOUT,
+                        entries: [
+                            {
+                                binding: 0,
+                                resource: {
+                                    buffer: buffer
+                                }
+                            },
+                            {
+                                binding: 1,
+                                resource: texture.createView()
+                            }
+                        ]
+                    })
+
+                    environmentLightInfo = {
+                        type: "hdr",
+                        bindGroupLayout: BG_LAYOUT,
+                        bindGroup: BG,
+                        getCode: (bgIndex) => {
+                            return /* wgsl */ `
+                            
+                            @group(${bgIndex}) @binding(0) var<uniform> hdr_settings : vec2i;
+                            @group(${bgIndex}) @binding(1) var ibl_texture : texture_2d<f32>;
+
+                            fn environment_light_le(d : vec3f) -> vec3f {
+                                var theta : f32 = atan(d.y / d.x) + Pi * .5;
+                                if (d.x < 0.) {
+                                    theta += Pi;
+                                }
+
+                                var phi : f32 = acos(d.z);
+                                var lonlat : vec2f = vec2f(theta, phi) * vec2f(Inv2Pi, InvPi);
+                                lonlat = vec2f(hdr_settings) * lonlat;
+
+                                return textureLoad(ibl_texture, vec2i(lonlat), 0).xyz;
+                            }`
+                        }
+                    }
+                    break
             }
         }
     }
@@ -434,7 +547,20 @@ function initScene(device) {
     }
 
     function setEnvironmentLight(type, info) {
+        switch(type) {
+            case "constant":
+                let r = info.color && info.color.r ? info.color.r : 0.
+                let g = info.color && info.color.g ? info.color.g : 0.
+                let b = info.color && info.color.b ? info.color.b : 0.
 
+                environmentLight = { type: "constant", color: {r, g, b} }
+                break
+            case "hdr":
+                environmentLight = { type: "hdr", buffer: info.buffer }
+                break
+            default:
+                console.error("ERROR in scene::setEnvironmentLight: unknown light type ", type)
+        }
     }
 
     function getSceneBindGroupInfo() {
@@ -445,6 +571,11 @@ function initScene(device) {
     function getMaterialBindGroupInfo() {
         if (materialBindGroupInfo == null) console.warn("ERROR in scene::getMaterialBindGroupInfo: scene has not been built yet")
         return materialBindGroupInfo
+    }
+
+    function getEnvironmentLightInfo() {
+        if (environmentLightInfo == null) console.warn("ERROR in scene::getEnvironmentLightInfo: scene has not been built yet")
+        return environmentLightInfo
     }
 
     function getLightCount() {
